@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.8"
+SCRIPT_VERSION="2026-11-26.9"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -337,6 +337,17 @@ cat >"/home/$RDP_USER/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manag
 </channel>
 EOF
 
+# xfwm4-Compositing deaktivieren – in xrdp/Xorg-Sessions der häufigste Grund
+# für Abstürze und "Verbindung wird wiederhergestellt".
+cat >"/home/$RDP_USER/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="use_compositing" type="bool" value="false"/>
+  </property>
+</channel>
+EOF
+
 # Proton VPN automatisch beim Desktop-Start öffnen, damit Login und
 # Killswitch direkt nach der RDP-Anmeldung sichtbar sind.
 install -d -o "$RDP_USER" -g "$RDP_USER" -m 0755 \
@@ -346,7 +357,7 @@ cat >"/home/$RDP_USER/.config/autostart/protonvpn.desktop" <<'EOF'
 Type=Application
 Name=Proton VPN
 Comment=Proton VPN beim Login starten
-Exec=protonvpn-app
+Exec=bash -c "sleep 3 && protonvpn-app"
 Terminal=false
 Categories=Network;
 EOF
@@ -368,25 +379,31 @@ chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/protonvpn.desktop"
 # Login-Keyring des Desktop-Users vorab mit dem RDP-Passwort anlegen,
 # damit beim ersten App-Start KEIN "Unlock login keyring"-Dialog erscheint
 # und PAM ihn beim Desktop-Login automatisch entschlüsselt.
-msg "Login-Keyring für $RDP_USER vorab anlegen"
-if [[ ! -f "/home/$RDP_USER/.local/share/keyrings/login.keyring" ]]; then
-  # shellcheck disable=SC2016  # $RDP_PASSWORD wird zur Laufzeit via env übergeben
-  if runuser -u "$RDP_USER" -- env HOME="/home/$RDP_USER" RDP_PASSWORD="$RDP_PASSWORD" bash -c '
-        eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1 || exit 1
-        printf "%s" "$RDP_PASSWORD" | \
-          gnome-keyring-daemon --unlock --replace --components=secrets >/dev/null 2>&1
-        exit 0
-  ' && [[ -f "/home/$RDP_USER/.local/share/keyrings/login.keyring" ]]; then
-    # "login" als Default-Keyring festlegen (liest die Proton-App).
-    printf 'login\n' >"/home/$RDP_USER/.local/share/keyrings/default"
-    chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.local/share/keyrings"
-    ok "Login-Keyring angelegt (mit RDP-Passwort verschlüsselt)"
-  else
-    warn "Keyring-Voranlage fehlgeschlagen – falls beim ersten App-Start ein"
-    warn "Unlock-Dialog erscheint: einmalig das RDP-Passwort eingeben."
-  fi
+# WICHTIG: Ein bereits vorhandener Keyring (z. B. von einem früheren Login
+# mit anderem Passwort angelegt) wird BEISEITE GESCHOBEN und neu erstellt –
+# sonst stimmt die Verschlüsselung nicht und der Dialog kommt immer wieder.
+msg "Login-Keyring für $RDP_USER anlegen (erzwungen)"
+KEYRING_DIR="/home/$RDP_USER/.local/share/keyrings"
+if [[ -f "$KEYRING_DIR/login.keyring" ]]; then
+  mv "$KEYRING_DIR/login.keyring" \
+     "$KEYRING_DIR/login.keyring.$(date +%s).bak" 2>/dev/null || true
+  rm -f "$KEYRING_DIR/user.keystore"
+  ok "Alten Login-Keyring gesichert und entfernt – wird neu erstellt"
+fi
+# shellcheck disable=SC2016  # $RDP_PASSWORD wird zur Laufzeit via env übergeben
+if runuser -u "$RDP_USER" -- env HOME="/home/$RDP_USER" RDP_PASSWORD="$RDP_PASSWORD" bash -c '
+      eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1 || exit 1
+      printf "%s" "$RDP_PASSWORD" | \
+        gnome-keyring-daemon --unlock --replace --components=secrets >/dev/null 2>&1
+      exit 0
+' && [[ -f "$KEYRING_DIR/login.keyring" ]]; then
+  # "login" als Default-Keyring festlegen (liest die Proton-App).
+  printf 'login\n' >"$KEYRING_DIR/default"
+  chown -R "$RDP_USER:$RDP_USER" "$KEYRING_DIR"
+  ok "Login-Keyring mit RDP-Passwort angelegt"
 else
-  ok "Login-Keyring existiert bereits"
+  warn "Keyring-Anlage fehlgeschlagen – falls beim ersten App-Start ein"
+  warn "Unlock-Dialog erscheint: einmalig das RDP-Passwort eingeben."
 fi
 
 # Tastatur-Layout für den RDP-Desktop setzen (Default: de). Ohne diesen

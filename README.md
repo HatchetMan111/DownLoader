@@ -107,6 +107,26 @@ Anmeldung am Desktop: Benutzer `proton`, Passwort aus der
 Installationsausgabe (liegt auch im Container unter
 `/root/proton-download-box-credentials.txt`).
 
+### Desktop passt nicht auf den Bildschirm? (Remmina)
+
+Die RDP-Sitzung nimmt die Auflösung vom Client an — ist das Remmina-Fenster
+klein, ist der Desktop klein. So machst du den Desktop bildschirmfüllend:
+
+1. In Remmina die Verbindung **bearbeiten** (Doppelklick auf den Eintrag)
+2. Reiter **„Auflösung"**:
+   - entweder **„Client-Auflösung verwenden"** wählen (dann folgt der
+     Desktop dem Remmina-Fenster), **oder**
+   - eine feste Auflösung setzen, z. B. `1920×1080`
+3. Speichern → verbinden → Remmina mit **F11** auf Vollbild stellen
+
+Bei `xfreerdp` übernimmt `/dynamic-size` das automatisch.
+
+> **„Verbindung wird wiederhergestellt"?** Ab Installer-Version
+> `2026-11-26.9` ist das xfwm4-Compositing deaktiviert — der häufigste
+> Grund für abbrechende Sitzungen unter xrdp. Zusätzlich startet die
+> Proton-App erst 3 Sekunden nach dem Desktop, damit der Session-Start
+> nicht ins Stocken gerät.
+
 ### 2. Proton VPN einrichten (direkt nach dem Login offen)
 
 1. **Proton VPN** öffnet sich nach der Anmeldung automatisch
@@ -117,12 +137,15 @@ Installationsausgabe (liegt auch im Container unter
 4. **Einstellungen (Zahnrad) → Killswitch → On** — fertig. Die Sitzung
    bleibt gespeichert, auch über Neustarts.
 
-> **„Unlock login keyring" / „Authentication required"?** Der Installer
-> legt den Login-Keyring des Desktop-Benutzers **vorab mit dem
-> RDP-Passwort** an — der Dialog sollte also nicht mehr erscheinen.
-> Falls doch (z. B. nachdem du das RDP-Passwort geändert hast): einmalig
-> das **RDP-Passwort** eingeben — danach ist der Keyring wieder
-> automatisch entsperrt.
+> **„Unlock login keyring" / „Authentication required"?** Der Installer legt
+> den Login-Keyring des Desktop-Benutzers **vorab mit dem RDP-Passwort**
+> an — der Dialog sollte also nicht mehr erscheinen. Falls du den Dialog
+> trotzdem schon gesehen hast: Ein alter Keyring (mit anderem Passwort)
+> wurde bei einem **Update-Lauf ab Version 2026-11-26.9 automatisch
+> gesichert und mit dem aktuellen RDP-Passwort neu angelegt**. Warst du in
+> der Proton-App schon angemeldet, musst du dich danach **einmalig neu
+> anmelden**. Sollte der Dialog jemals wieder auftauchen (z. B. nach einem
+> RDP-Passwort-Wechsel): einmalig das **RDP-Passwort** eingeben — fertig.
 
 ### Tastatur im RDP-Desktop
 
