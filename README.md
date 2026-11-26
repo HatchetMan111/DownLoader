@@ -115,8 +115,24 @@ Installationsausgabe (liegt auch im Container unter
    (evtl. 2FA-Code eingeben).
 3. **Connect** → der schnellste Free-Server verbindet sich.
 4. **Einstellungen (Zahnrad) → Killswitch → On** — fertig. Die Sitzung
-   bleibt gespeichert, auch über Neustarts (Keyring wird beim RDP-Login
-   automatisch entsperrt).
+   bleibt gespeichert, auch über Neustarts.
+
+> **„Unlock login keyring" / „Authentication required"?** Der Installer
+> legt den Login-Keyring des Desktop-Benutzers **vorab mit dem
+> RDP-Passwort** an — der Dialog sollte also nicht mehr erscheinen.
+> Falls doch (z. B. nachdem du das RDP-Passwort geändert hast): einmalig
+> das **RDP-Passwort** eingeben — danach ist der Keyring wieder
+> automatisch entsperrt.
+
+### Tastatur im RDP-Desktop
+
+Der Desktop startet mit **deutschem Layout** (`de`) — `@` ist wie gewohnt
+`AltGr+Q`, `z` und `y` sitzen richtig. Anderes Layout? Installer mit
+`--kbd <layout>` ausführen (z. B. `--kbd us`).
+
+```bash
+... | bash -s -- --id 109 --kbd us
+```
 
 ### 3. Danach: Box im Alltag nutzen
 

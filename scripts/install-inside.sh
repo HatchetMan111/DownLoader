@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.7"
+SCRIPT_VERSION="2026-11-26.8"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -29,6 +29,7 @@ RDP_USER="${PDB_RDP_USER:-proton}"
 RDP_PASSWORD="${PDB_RDP_PASSWORD:-}"
 SMB_USER="${PDB_SMB_USER:-$RDP_USER}"
 SMB_PASSWORD="${PDB_SMB_PASSWORD:-$RDP_PASSWORD}"
+KBD_LAYOUT="${PDB_KBD_LAYOUT:-de}"
 
 LOG_FILE="/var/log/proton-download-box-install.log"
 APP_DIR="/opt/proton-download-box"
@@ -363,6 +364,51 @@ Categories=Network;
 EOF
 chmod 0755 "/home/$RDP_USER/Desktop/protonvpn.desktop"
 chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/protonvpn.desktop"
+
+# Login-Keyring des Desktop-Users vorab mit dem RDP-Passwort anlegen,
+# damit beim ersten App-Start KEIN "Unlock login keyring"-Dialog erscheint
+# und PAM ihn beim Desktop-Login automatisch entschlüsselt.
+msg "Login-Keyring für $RDP_USER vorab anlegen"
+if [[ ! -f "/home/$RDP_USER/.local/share/keyrings/login.keyring" ]]; then
+  # shellcheck disable=SC2016  # $RDP_PASSWORD wird zur Laufzeit via env übergeben
+  if runuser -u "$RDP_USER" -- env HOME="/home/$RDP_USER" RDP_PASSWORD="$RDP_PASSWORD" bash -c '
+        eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1 || exit 1
+        printf "%s" "$RDP_PASSWORD" | \
+          gnome-keyring-daemon --unlock --replace --components=secrets >/dev/null 2>&1
+        exit 0
+  ' && [[ -f "/home/$RDP_USER/.local/share/keyrings/login.keyring" ]]; then
+    # "login" als Default-Keyring festlegen (liest die Proton-App).
+    printf 'login\n' >"/home/$RDP_USER/.local/share/keyrings/default"
+    chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.local/share/keyrings"
+    ok "Login-Keyring angelegt (mit RDP-Passwort verschlüsselt)"
+  else
+    warn "Keyring-Voranlage fehlgeschlagen – falls beim ersten App-Start ein"
+    warn "Unlock-Dialog erscheint: einmalig das RDP-Passwort eingeben."
+  fi
+else
+  ok "Login-Keyring existiert bereits"
+fi
+
+# Tastatur-Layout für den RDP-Desktop setzen (Default: de). Ohne diesen
+# Schritt liefert die Session ein US-Layout – z. B. "@" ist dann nicht
+# über AltGr+Q erreichbar.
+if [[ -n "$KBD_LAYOUT" ]]; then
+  msg "Tastatur-Layout setzen: $KBD_LAYOUT"
+  if [[ -f /etc/default/keyboard ]]; then
+    sed -i 's/^XKBLAYOUT=.*/XKBLAYOUT="'"$KBD_LAYOUT"'"/' /etc/default/keyboard
+    dpkg-reconfigure -f noninteractive keyboard-configuration >/dev/null 2>&1 || true
+  fi
+  cat >"/home/$RDP_USER/.config/autostart/keyboard-layout.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Tastatur-Layout
+Comment=Layout in der RDP-Session erzwingen
+Exec=setxkbmap $KBD_LAYOUT
+Terminal=false
+EOF
+  chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.config/autostart/keyboard-layout.desktop"
+  ok "Tastatur-Layout aktiv: $KBD_LAYOUT"
+fi
 
 chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.config"
 

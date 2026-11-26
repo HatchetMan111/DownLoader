@@ -46,6 +46,7 @@ IP_CONFIG="${IP_CONFIG:-dhcp}"
 GATEWAY="${GATEWAY:-}"
 PORT="${PORT:-8080}"
 TZ_VALUE="${TZ_VALUE:-Europe/Berlin}"
+KBD_LAYOUT="${KBD_LAYOUT:-de}"
 RDP_USER="${RDP_USER:-proton}"
 
 # --- secrets (generated when empty, preserved on re-runs) --------------------
@@ -97,6 +98,7 @@ Optionen:
   --gw <ip>              Gateway (nur bei statischer IP)
   --port <port>          Web-UI-Port (Standard: ${PORT})
   --tz <zone>            Zeitzone (Standard: ${TZ_VALUE})
+  --kbd <layout>         Tastatur-Layout im RDP-Desktop (Standard: ${KBD_LAYOUT})
   --rdp-user <name>      Desktop-Benutzer (Standard: ${RDP_USER})
   --web-password <pw>    Passwort der Web UI (Standard: generiert)
   --rdp-password <pw>    Passwort für RDP/Samba (Standard: generiert)
@@ -172,6 +174,7 @@ while [[ $# -gt 0 ]]; do
     --gw) GATEWAY="${2:?}"; shift 2 ;;
     --port) PORT="${2:?}"; shift 2 ;;
     --tz) TZ_VALUE="${2:?}"; shift 2 ;;
+    --kbd) KBD_LAYOUT="${2:?}"; shift 2 ;;
     --rdp-user) RDP_USER="${2:?}"; shift 2 ;;
     --web-password) WEB_PASSWORD="${2:?}"; shift 2 ;;
     --rdp-password) RDP_PASSWORD="${2:?}"; shift 2 ;;
@@ -544,6 +547,7 @@ run_inside() {
   cat >"$INSTALL_ENV" <<EOF
 PDB_PORT='${PORT}'
 PDB_TZ='${TZ_VALUE}'
+PDB_KBD_LAYOUT='${KBD_LAYOUT}'
 PDB_PASSWORD='${WEB_PASSWORD}'
 PDB_RDP_USER='${RDP_USER}'
 PDB_RDP_PASSWORD='${RDP_PASSWORD}'
