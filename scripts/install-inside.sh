@@ -106,7 +106,6 @@ apt_update() {
     die "apt-get update fehlgeschlagen (Details oben)"
   fi
 }
-
 apt_install() {
   local pkgs=() pkg
   for pkg in "$@"; do
