@@ -31,16 +31,21 @@ printf '\n' | gnome-keyring-daemon --unlock --replace --components=secrets \
 
 # --- LAN-Route: RDP/Samba/Web-UI bleiben trotz Tunnel erreichbar -------------
 lan_fix() {
+  # Bevorzugt der root-Helfer (per sudoers freigegeben) – als normaler
+  # Benutzer lassen sich keine Routen/Regeln setzen.
+  if [[ -x /usr/local/bin/pdb-lan-fix ]] && sudo -n /usr/local/bin/pdb-lan-fix 2>/dev/null; then
+    return 0
+  fi
   local ip4 lan gw
   ip4=$(ip -4 -o addr show dev eth0 2>/dev/null | awk '{print $4; exit}')
-  [[ -n "$ip4" ]] || return 0
+  [[ -n "$ip4" ]] || return 1
   lan=$(python3 -c 'import ipaddress,sys; print(ipaddress.ip_interface(sys.argv[1]).network)' \
-        "$ip4" 2>/dev/null) || return 0
+        "$ip4" 2>/dev/null) || return 1
   gw=$(ip route show default dev eth0 2>/dev/null | awk '{print $3; exit}')
-  [[ -n "$gw" ]] || return 0
-  ip route replace "$lan" via "$gw" dev eth0 2>/dev/null || true
+  [[ -n "$gw" ]] || return 1
+  ip route replace "$lan" via "$gw" dev eth0 2>/dev/null || return 1
   ip rule del to "$lan" lookup main priority 100 2>/dev/null || true
-  ip rule add to "$lan" lookup main priority 100 2>/dev/null || true
+  ip rule add to "$lan" lookup main priority 100 2>/dev/null || return 1
   printf 'LAN %s über %s freigeschaltet (RDP/Samba bleiben erreichbar)\n' "$lan" "$gw"
 }
 
@@ -87,21 +92,49 @@ if [[ "$SIGNED_IN" != true ]]; then
 fi
 
 printf '\n=== Verbinden (schnellster Free-Server)\n'
+
+# Debian 12 hat NetworkManager 1.42 – ohne natives WireGuard. Proton wählt
+# per Default WireGuard, findet dann aber kein Backend ("Backend: None")
+# und läuft in einen Timeout. Deshalb Protokoll explizit setzen und
+# durchprobieren: OpenVPN (TCP → UDP) und zuletzt WireGuard.
+set_protocol() {
+  local proto=$1
+  mkdir -p "$HOME/.config/Proton/VPN"
+  python3 - "$HOME/.config/Proton/VPN/settings.json" "$proto" <<'PY' 2>/dev/null || true
+import json, os, sys
+path, proto = sys.argv[1], sys.argv[2]
+data = {}
+if os.path.exists(path):
+    try:
+        data = json.load(open(path))
+    except Exception:
+        data = {}
+data["protocol"] = proto
+json.dump(data, open(path, "w"), indent=4)
+PY
+}
+
 CONNECTED=false
-if protonvpn connect; then
-  CONNECTED=true
-else
-  printf '\nErster Versuch fehlgeschlagen – Killswitch temporär aus, neuer Versuch …\n'
+for proto in openvpn-tcp openvpn-udp wireguard; do
+  printf '\n  Protokoll: %s\n' "$proto"
+  set_protocol "$proto"
+  if protonvpn connect; then
+    CONNECTED=true
+    printf '  verbunden mit %s\n' "$proto"
+    break
+  fi
+  # Killswitch vor dem ersten erfolgreichen Verbinden ausschalten
   protonvpn config set kill-switch off >/dev/null 2>&1 || true
-  sleep 2
-  protonvpn connect && CONNECTED=true
-fi
+  sleep 1
+done
 
 # NetworkManager hat keine aktive Verbindung? Dann eth0 übernehmen und erneut.
 if [[ "$CONNECTED" != true ]] && [[ -x /usr/local/bin/pdb-nm-takeover ]]; then
   printf '\nNM verwaltet eth0 nicht – versuche Übernahme (mit Rollback) …\n'
-  if /usr/local/bin/pdb-nm-takeover; then
+  if sudo -n /usr/local/bin/pdb-nm-takeover 2>/dev/null \
+     || /usr/local/bin/pdb-nm-takeover; then
     sleep 2
+    set_protocol openvpn-tcp
     printf 'Neuer Verbindungsversuch …\n'
     protonvpn connect && CONNECTED=true
   fi
@@ -145,7 +178,7 @@ else
 fi
 
 printf '\n=== LAN freischalten\n'
-lan_fix
+sudo -n /usr/local/bin/pdb-lan-fix 2>/dev/null || lan_fix
 
 printf '\n=== Status\n'
 protonvpn status || true

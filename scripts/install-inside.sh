@@ -525,6 +525,12 @@ install -m 0755 "$PAYLOAD_DIR/scripts/pdb-proton-setup.sh" \
 install -m 0755 "$PAYLOAD_DIR/scripts/pdb-nm-takeover.sh" \
   /usr/local/bin/pdb-nm-takeover
 
+# Erlaubt dem Desktop-Benutzer den NM-Übernahme-Helfer ohne Passwort
+# (wird vom Setup-Skript benötigt, das als proton läuft).
+printf 'proton ALL=(root) NOPASSWD: /usr/local/bin/pdb-nm-takeover, /usr/local/bin/pdb-lan-fix\n' \
+  >/etc/sudoers.d/pdb-nm-takeover
+chmod 0440 /etc/sudoers.d/pdb-nm-takeover
+
 cat >/usr/local/bin/pdb-proton-connect <<'EOF'
 #!/usr/bin/env bash
 # Verbindet den Tunnel beim Boot (systemd). Still, wenn noch kein Login.
