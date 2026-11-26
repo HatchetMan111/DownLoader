@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.15"
+SCRIPT_VERSION="2026-11-26.16"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -337,13 +337,38 @@ cat >"/home/$RDP_USER/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manag
 </channel>
 EOF
 
-# xfwm4-Compositing deaktivieren – in xrdp/Xorg-Sessions der häufigste Grund
-# für Abstürze und "Verbindung wird wiederhergestellt".
+# Lesbare Schriften auch bei kleiner RDP-Auflösung (Standard ist oft zu klein
+# für ein kleines Remmina-Fenster).
+cat >"/home/$RDP_USER/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xsettings" version="1.0">
+  <property name="Xft" type="empty">
+    <property name="DPI" type="int" value="96"/>
+    <property name="Antialias" type="int" value="1"/>
+    <property name="Hinting" type="int" value="1"/>
+    <property name="RGBA" type="int" value="1"/>
+  </property>
+  <property name="Gtk" type="empty">
+    <property name="FontName" type="string" value="Sans 11"/>
+    <property name="MonospaceFontName" type="string" value="Monospace 11"/>
+    <property name="TitleFontName" type="string" value="Sans Bold 11"/>
+  </property>
+  <property name="Net" type="empty">
+    <property name="ThemeName" type="string" value="Adwaita"/>
+    <property name="IconThemeName" type="string" value="Adwaita"/>
+  </property>
+</channel>
+EOF
+
+# XFCE-Schriftgrößen anheben (11pt statt 9pt) – deutlich besser lesbar.
 cat >"/home/$RDP_USER/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfwm4" version="1.0">
   <property name="general" type="empty">
     <property name="use_compositing" type="bool" value="false"/>
+    <property name="title_font" type="string" value="Sans Bold 11"/>
+    <property name="title_alignment" type="string" value="center"/>
+    <property name="button_layout" type="string" value="O|HMC"/>
   </property>
 </channel>
 EOF
@@ -663,6 +688,29 @@ msg "Anwendung nach $APP_DIR deployen"
 install -d -o "$APP_USER" -g "$APP_USER" -m 0755 "$APP_DIR"
 install -d -o "$APP_USER" -g "$APP_USER" -m 2775 /srv/downloads
 install -d -o "$APP_USER" -g "$APP_USER" -m 0750 /var/lib/proton-download-box
+
+# Fertig konfigurierten Remmina-Client auf die Box legen: Vollbild +
+# Client-Auflösung. Der Nutzer muss nichts mehr einstellen, nur importieren.
+BOX_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+if [[ -n "$BOX_IP" ]]; then
+  cat >"/srv/downloads/proton-download-box.remmina" <<EOF
+[remmina]
+name=Proton Download Box
+protocol=RDP
+server=${BOX_IP}:3389
+username=${RDP_USER}
+domain=
+resolution_mode=2
+window_maximized=1
+window_fullscreen=0
+colordepth=32
+quality=9
+disableclipboard=0
+audio_mode=0
+EOF
+  chown "$APP_USER:$APP_USER" "/srv/downloads/proton-download-box.remmina"
+  ok "Remmina-Profil abgelegt: /srv/downloads/proton-download-box.remmina"
+fi
 
 rm -rf "$APP_DIR/backend.new" "$APP_DIR/web.new"
 cp -a "$PAYLOAD_DIR/app/backend" "$APP_DIR/backend.new"

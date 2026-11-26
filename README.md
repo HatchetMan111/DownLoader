@@ -107,19 +107,24 @@ Anmeldung am Desktop: Benutzer `proton`, Passwort aus der
 Installationsausgabe (liegt auch im Container unter
 `/root/proton-download-box-credentials.txt`).
 
-### Desktop passt nicht auf den Bildschirm? (Remmina)
+### Desktop passt nicht auf den Bildschirm? → Fertiges Profil importieren
 
-Die RDP-Sitzung nimmt die Auflösung vom Client an — ist das Remmina-Fenster
-klein, ist der Desktop klein. So machst du den Desktop bildschirmfüllend:
+Der Installer legt eine **fertig konfigurierte Remmina-Datei** auf die Box
+(Client-Auflösung + maximiertes Fenster). Du musst nichts einstellen:
 
-1. In Remmina die Verbindung **bearbeiten** (Doppelklick auf den Eintrag)
-2. Reiter **„Auflösung"**:
-   - entweder **„Client-Auflösung verwenden"** wählen (dann folgt der
-     Desktop dem Remmina-Fenster), **oder**
-   - eine feste Auflösung setzen, z. B. `1920×1080`
-3. Speichern → verbinden → Remmina mit **F11** auf Vollbild stellen
+1. Web UI öffnen (`http://<CT-IP>:8080`) → Login → **Dateien** →
+   `proton-download-box.remmina` herunterladen
+2. In Remmina: **Menü ☰ → Werkzeuge → Importieren** → die Datei wählen
+3. Auf den neuen Eintrag **doppelklicken** → Passwort eingeben → fertig
 
-Bei `xfreerdp` übernimmt `/dynamic-size` das automatisch.
+Alternativ den Eintrag einfach per Doppelklick öffnen (Remmina übernimmt
+`.remmina`-Dateien) oder manuell: Verbindung **bearbeiten** →
+„Auflösung" → **„Client-Auflösung verwenden"** → verbinden → **F11**.
+
+> Schriften sind auf der Box bewusst auf **11 pt / DPI 96** gesetzt, damit
+> die Oberfläche auch in einem kleinen Fenster lesbar bleibt. Für mehr
+> Platz: Remmina-Fenster maximieren **bevor** du verbindest, oder
+> `1920×1080` fest einstellen.
 
 > **„Verbindung wird wiederhergestellt"?** Ab Installer-Version
 > `2026-11-26.9` ist das xfwm4-Compositing deaktiviert — der häufigste
