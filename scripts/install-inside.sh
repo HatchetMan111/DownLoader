@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.6"
+SCRIPT_VERSION="2026-11-26.7"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -335,6 +335,35 @@ cat >"/home/$RDP_USER/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manag
   </property>
 </channel>
 EOF
+
+# Proton VPN automatisch beim Desktop-Start öffnen, damit Login und
+# Killswitch direkt nach der RDP-Anmeldung sichtbar sind.
+install -d -o "$RDP_USER" -g "$RDP_USER" -m 0755 \
+  "/home/$RDP_USER/.config/autostart"
+cat >"/home/$RDP_USER/.config/autostart/protonvpn.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Proton VPN
+Comment=Proton VPN beim Login starten
+Exec=protonvpn-app
+Terminal=false
+Categories=Network;
+EOF
+
+# Desktop-Verknüpfung als sichtbarer Fallback (Icon doppelt anklicken).
+install -d -o "$RDP_USER" -g "$RDP_USER" -m 0755 "/home/$RDP_USER/Desktop"
+cat >"/home/$RDP_USER/Desktop/protonvpn.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Proton VPN
+Comment=Proton VPN öffnen
+Exec=protonvpn-app
+Terminal=false
+Categories=Network;
+EOF
+chmod 0755 "/home/$RDP_USER/Desktop/protonvpn.desktop"
+chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/protonvpn.desktop"
+
 chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.config"
 
 # --------------------------------------------------------------------------- #
@@ -624,7 +653,7 @@ printf ' Samba-Passw.: %s\n' "$SMB_PASSWORD"
 printf ' Dateien     : /srv/downloads\n'
 printf ' Log         : %s\n' "$LOG_FILE"
 printf '%s\n' "-------------------------------------------------------------------"
-printf '%s\n' " Nächster Schritt: per RDP anmelden, Proton VPN starten, einloggen,"
-printf '%s\n' " verbinden und in den Einstellungen den Killswitch aktivieren."
+printf '%s\n' " Nächster Schritt: per RDP anmelden – Proton VPN öffnet sich direkt."
+printf '%s\n' " Einmalig: einloggen, verbinden, Killswitch aktivieren – fertig."
 printf '%s\n' "-------------------------------------------------------------------"
 printf '\n'

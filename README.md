@@ -79,17 +79,53 @@ Beispiele:
 ... | bash -s -- --ram 2048 --disk 16 --web-password "MeinPasswort"
 ```
 
-## Nach der Installation
+## Nach der Installation: VPN einrichten (einmalig, ~2 Minuten)
 
-1. **RDP** auf `<CT-IP>:3389` (Benutzer `proton`, Passwort aus der
-   Installationsausgabe bzw. `/root/proton-download-box-credentials.txt`
-   im Container).
-2. **Proton VPN** starten, mit dem Free-Account anmelden, Server verbinden
-   und in den **Einstellungen den Killswitch aktivieren**. Proton Free hat
-   keinen Headless-Modus dafür – das läuft bewusst über die App-UI.
-3. Downloads über die **Web UI** starten, Dateien per Browser **herunterladen**
-   oder per **Samba** (`\\<CT-IP>\downloads`) abholen. Downloads laufen durch
-   den Tunnel, sobald die VPN-App verbunden ist.
+Der Proton-Login ist der einzige Schritt, der einmalig über den Desktop
+laufen muss — Proton speichert die Sitzung verschlüsselt im Benutzer-Keyring,
+und beim Login können 2FA/Captcha auftreten, die kein Skript ausfüllen kann.
+Danach brauchst du RDP nur noch, wenn du etwas in der App ändern willst.
+
+**Proton VPN öffnet sich ab Installer-Version 2026-11-26.7 automatisch
+direkt nach der RDP-Anmeldung** (XFCE-Autostart). Es liegt zusätzlich ein
+Icon auf dem Desktop.
+
+### 1. Per RDP mit dem Desktop verbinden
+
+RDP ist ein eigenes Protokoll — der Browser funktioniert dafür **nicht**
+(`ERR_INVALID_HTTP_RESPONSE` ist normal, wenn man Port 3389 im Browser
+öffnet). Nimm stattdessen den RDP-Client deines Systems:
+
+| System | Client | So geht's |
+|---|---|---|
+| **Windows** | „Remotedesktopverbindung" (vorinstalliert) | `Windows + R` → `mstsc` → Rechner `<CT-IP>` → Verbinden |
+| **macOS** | „Windows App" (ehem. MS Remote Desktop, App Store) | PC hinzufügen → `<CT-IP>` |
+| **Ubuntu/Zorin** | „Remmina" (vorinstalliert) | Remmina öffnen → `+` → Protokoll RDP, Server `<CT-IP>` |
+| **Linux (Terminal)** | `xfreerdp` | `xfreerdp /v:<CT-IP> /u:proton /dynamic-size` |
+
+Anmeldung am Desktop: Benutzer `proton`, Passwort aus der
+Installationsausgabe (liegt auch im Container unter
+`/root/proton-download-box-credentials.txt`).
+
+### 2. Proton VPN einrichten (direkt nach dem Login offen)
+
+1. **Proton VPN** öffnet sich nach der Anmeldung automatisch
+   (oder Desktop-Icon doppelklicken / im Terminal `protonvpn-app`).
+2. **Sign in** → mit dem kostenlosen Proton-Account anmelden
+   (evtl. 2FA-Code eingeben).
+3. **Connect** → der schnellste Free-Server verbindet sich.
+4. **Einstellungen (Zahnrad) → Killswitch → On** — fertig. Die Sitzung
+   bleibt gespeichert, auch über Neustarts (Keyring wird beim RDP-Login
+   automatisch entsperrt).
+
+### 3. Danach: Box im Alltag nutzen
+
+- **Web UI** `http://<CT-IP>:8080` → Login mit dem Web-Passwort →
+  VPN-Status oben, URL-Downloads starten, Dateien verwalten und auf den
+  eigenen PC laden
+- **Samba** `\\<CT-IP>\downloads` (Benutzer `proton`) → Dateien direkt
+  im Explorer/Finder
+- **RDP** nur noch bei Bedarf (z. B. Serverland wechseln)
 
 > **Proton Free Limits:** kein P2P/Torrents, 1 Gerät gleichzeitig, begrenzte
 > Serverauswahl. Die Web-UI zeigt Tunnelstatus und öffentliche IP, damit man
