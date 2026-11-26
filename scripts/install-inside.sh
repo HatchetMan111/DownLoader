@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.14"
+SCRIPT_VERSION="2026-11-26.15"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -508,8 +508,15 @@ eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1
 eval "$(printf "\n" | gnome-keyring-daemon --unlock --replace \
   --components=secrets)" >/dev/null 2>&1
 
-printf '\n=== Proton VPN – Anmeldung (Email + Passwort deines Free-Accounts)\n'
-protonvpn signin
+printf '\n=== Proton VPN – Anmeldung (dein kostenloser Proton-Account)\n'
+read -rp 'Proton-Email: ' PUSER
+if [[ -z "${PUSER:-}" ]]; then
+  printf 'Keine Email eingegeben – Abbruch.\n'
+  exit 1
+fi
+# Passwort wird vom CLI selbst abgefragt (unsichtbare Eingabe).
+# Nutzt dein Account eine Authenticator-App:  protonvpn signin <email> --totp
+protonvpn signin "$PUSER"
 
 printf '\n=== Killswitch aktivieren\n'
 protonvpn config set kill-switch standard
