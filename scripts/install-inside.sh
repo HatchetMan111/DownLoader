@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.9"
+SCRIPT_VERSION="2026-11-26.10"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -447,6 +447,12 @@ exec startxfce4
 EOF
 chmod 0755 /etc/xrdp/startwm.sh
 
+# Hängende Sitzungsprozesse von früheren Verbindungen aufräumen: nach einem
+# xrdp-Neustart blockieren Zombies sonst neue Verbindungen ("wird abgebrochen").
+pkill -x Xorg >/dev/null 2>&1 || true
+pkill -u "$RDP_USER" -f 'xfce4-session' >/dev/null 2>&1 || true
+pkill -u "$RDP_USER" -f 'gnome-keyring-daemon' >/dev/null 2>&1 || true
+
 # Auto-unlock the GNOME keyring with the login password (Proton stores the
 # session there). "optional" means a missing module never blocks login.
 if [[ -f /etc/pam.d/xrdp-sesman ]] && ! grep -q 'pam_gnome_keyring' /etc/pam.d/xrdp-sesman; then
@@ -459,6 +465,14 @@ fi
 systemctl enable xrdp >/dev/null 2>&1
 systemctl restart xrdp
 ok "xrdp aktiv (Port 3389)"
+
+# Sicherstellen, dass xrdp wirklich auf 3389 lauscht.
+if ! ss -tln 2>/dev/null | grep -q ':3389 '; then
+  systemctl status xrdp --no-pager -l 2>&1 | tail -n 20 >&2 || true
+  journalctl -u xrdp --no-pager -n 30 >&2 || true
+  die "xrdp lauscht nicht auf Port 3389"
+fi
+ok "xrdp lauscht auf 3389"
 
 # --------------------------------------------------------------------------- #
 # 6. NetworkManager: manage the tunnel, never touch eth0
