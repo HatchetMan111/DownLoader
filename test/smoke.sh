@@ -162,6 +162,18 @@ step "Aufräumen der API"
 [[ "$(code -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d '{"path":"","recursive":true}' "$BASE/api/files/delete")" == "400" ]] \
   && pass "Root-Löschung abgelehnt (400)" || fail "root delete not blocked"
 
+step "VPN-Steuerung"
+[[ "$(code -b "$COOKIE" "$BASE/api/vpn")" == "200" ]] && pass "GET /api/vpn → 200" || fail "vpn options"
+[[ "$(jq -r '.countries | length' <"$WORK/body")" -ge 3 ]] && pass "Länderliste vorhanden" || fail "countries"
+[[ "$(code -b "$COOKIE" "$BASE/api/vpn/leaktest")" == "200" ]] && pass "Leak-Test → 200" || fail "leaktest"
+[[ "$(jq -r '.checks | length' <"$WORK/body")" -ge 5 ]] && pass "Leak-Test liefert Checks" || fail "leak checks"
+[[ "$(jq -r '.summary' <"$WORK/body")" != "null" ]] && pass "Leak-Test liefert Summary" || fail "leak summary"
+[[ "$(code -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d '{"country":"XYZ"}' "$BASE/api/vpn/connect")" == "400" ]] \
+  && pass "ungültiger Ländercode → 400" || fail "country validation"
+[[ "$(code -b "$COOKIE" "$BASE/api/vpn")" == "200" ]] && pass "VPN-Status abrufbar" || fail "vpn status"
+[[ "$(code -b "$COOKIE" -X POST -H 'Content-Type: application/json' -d '{"enabled":true}' "$BASE/api/vpn/killswitch")" != "401" ]] \
+  && pass "Killswitch-Endpunkt antwortet" || fail "killswitch endpoint"
+
 step "SPA + Logout"
 [[ "$(code "$BASE/")" == "200" ]] && pass "GET / liefert SPA" || fail "spa"
 grep -q '<div id="root">' "$WORK/body" && pass "SPA-HTML enthält #root" || fail "spa html"

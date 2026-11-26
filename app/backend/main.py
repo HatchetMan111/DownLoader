@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import secrets
+import shlex
 import shutil
 import socket
 import subprocess
@@ -259,6 +260,225 @@ def _service_active(unit: str) -> bool:
     return code == 0 and out.strip() == "active"
 
 
+# --------------------------------------------------------------------------- #
+# Proton VPN control (CLI, ausgeführt als Desktop-Benutzer)
+# --------------------------------------------------------------------------- #
+
+# Free-Tier-Länder (Auswahl der üblichen kostenlosen Standorte).
+FREE_COUNTRIES = [
+    {"code": "NL", "name": "Niederlande"},
+    {"code": "US", "name": "USA"},
+    {"code": "JP", "name": "Japan"},
+    {"code": "RO", "name": "Rumänien"},
+    {"code": "PL", "name": "Polen"},
+]
+
+BASELINE_FILE = Path("/var/lib/proton-download-box/baseline-ip.json")
+
+_PROTON_WRAPPER = (
+    "unset XDG_RUNTIME_DIR; "
+    'eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1; '
+    "printf '\\n' | gnome-keyring-daemon --unlock --replace "
+    "--components=secrets >/dev/null 2>&1; "
+    "exec protonvpn "
+)
+
+
+def _proton(args: list[str], timeout: float = 60.0) -> tuple[int, str, str]:
+    """Führt `protonvpn <args>` als Desktop-Benutzer mit Keyring-Kontext aus."""
+    cmd = " ".join(shlex.quote(a) for a in args)
+    return _run(
+        ["runuser", "-u", RDP_USER, "--", "bash", "-c", _PROTON_WRAPPER + cmd],
+        timeout,
+    )
+
+
+def _parse_status(text: str) -> dict[str, Any]:
+    info: dict[str, Any] = {"connected": False, "server": None, "location": None}
+    for line in text.splitlines():
+        line = line.strip()
+        if line.lower().startswith("status:"):
+            info["connected"] = "connected" in line.lower() and "disconnected" not in line.lower()
+        elif line.lower().startswith("server:"):
+            raw = line.split(":", 1)[1].strip()
+            info["server"] = raw
+            if " in " in raw:
+                info["server"], info["location"] = raw.split(" in ", 1)
+    return info
+
+
+def _killswitch_enabled() -> bool | None:
+    code, out, err = _proton(["config", "list"], timeout=25)
+    text = f"{out}\n{err}"
+    if code != 0 and "kill" not in text.lower():
+        return None
+    match = re.search(r"kill[-\s]?switch[^\n]*?[:=]\s*(\w+)", text, re.I)
+    if not match:
+        return None
+    return match.group(1).lower() in {"standard", "permanent", "on", "true", "enabled"}
+
+
+def _read_baseline() -> str | None:
+    try:
+        import json
+
+        return json.loads(BASELINE_FILE.read_text()).get("ip")
+    except Exception:
+        return None
+
+
+def _write_baseline(ip: str) -> None:
+    try:
+        import json
+
+        BASELINE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        BASELINE_FILE.write_text(json.dumps({"ip": ip, "ts": int(time.time())}))
+    except Exception:
+        pass
+
+
+def _resolv_nameservers() -> list[str]:
+    servers: list[str] = []
+    try:
+        for line in Path("/etc/resolv.conf").read_text().splitlines():
+            if line.strip().startswith("nameserver"):
+                parts = line.split()
+                if len(parts) > 1:
+                    servers.append(parts[1])
+    except Exception:
+        pass
+    return servers
+
+
+def _global_ipv6() -> list[str]:
+    code, out, _ = _run(["ip", "-6", "-o", "addr", "show", "dev", "eth0", "scope", "global"])
+    if code != 0:
+        return []
+    return [line.split()[3] for line in out.splitlines() if len(line.split()) > 3]
+
+
+def _leak_test() -> dict[str, Any]:
+    vpn = _vpn_state()
+    connected = bool(vpn.get("connected"))
+    public_ip = _public_ip()
+    checks: list[dict[str, Any]] = []
+
+    if not connected and public_ip:
+        _write_baseline(public_ip)
+    baseline = _read_baseline()
+
+    checks.append(
+        {
+            "id": "tunnel",
+            "label": "VPN-Tunnel aktiv",
+            "status": "pass" if connected else "fail",
+            "detail": vpn.get("connection") or "Kein Proton-Tunnel gefunden",
+        }
+    )
+
+    if public_ip and baseline and connected:
+        same = public_ip == baseline
+        checks.append(
+            {
+                "id": "ip",
+                "label": "Öffentliche IP verschleiert",
+                "status": "fail" if same else "pass",
+                "detail": (
+                    f"IP unverändert ({public_ip}) – echter Anschluss sichtbar!"
+                    if same
+                    else f"{public_ip} (vorher {baseline})"
+                ),
+            }
+        )
+    else:
+        checks.append(
+            {
+                "id": "ip",
+                "label": "Öffentliche IP verschleiert",
+                "status": "pass" if connected and public_ip else "warn",
+                "detail": public_ip or "konnte nicht ermittelt werden",
+            }
+        )
+
+    nameservers = _resolv_nameservers()
+    proton_dns = [ns for ns in nameservers if ns.startswith("10.2.0.")]
+    if connected:
+        ok = bool(proton_dns)
+        checks.append(
+            {
+                "id": "dns",
+                "label": "DNS über Proton",
+                "status": "pass" if ok else "warn",
+                "detail": ", ".join(nameservers) or "keine Nameserver",
+            }
+        )
+    else:
+        checks.append(
+            {
+                "id": "dns",
+                "label": "DNS über Proton",
+                "status": "warn",
+                "detail": f"nicht verbunden – {', '.join(nameservers) or 'keine'}",
+            }
+        )
+
+    try:
+        socket.getaddrinfo("protonvpn.com", 443)
+        resolved = True
+    except Exception:
+        resolved = False
+    checks.append(
+        {
+            "id": "resolve",
+            "label": "Namensauflösung funktioniert",
+            "status": "pass" if resolved else "fail",
+            "detail": "protonvpn.com aufgelöst" if resolved else "Auflösung fehlgeschlagen",
+        }
+    )
+
+    v6 = _global_ipv6()
+    checks.append(
+        {
+            "id": "ipv6",
+            "label": "Kein IPv6-Leck",
+            "status": "warn" if v6 else "pass",
+            "detail": ", ".join(v6) if v6 else "keine globale IPv6-Adresse",
+        }
+    )
+
+    ks = _killswitch_enabled()
+    checks.append(
+        {
+            "id": "killswitch",
+            "label": "Killswitch aktiv",
+            "status": "pass" if ks else ("warn" if ks is None else "fail"),
+            "detail": "standard/permanent" if ks else ("unbekannt" if ks is None else "deaktiviert"),
+        }
+    )
+
+    code, out, _ = _run(["ip", "rule", "show"])
+    lan_ok = any("lookup main" in line and "to " in line for line in out.splitlines())
+    checks.append(
+        {
+            "id": "lan",
+            "label": "LAN-Route (RDP/Samba erreichbar)",
+            "status": "pass" if lan_ok else "warn",
+            "detail": "ip rule gesetzt" if lan_ok else "keine LAN-Regel gefunden",
+        }
+    )
+
+    fails = sum(1 for c in checks if c["status"] == "fail")
+    warns = sum(1 for c in checks if c["status"] == "warn")
+    if fails:
+        summary = f"{fails} Problem(e) gefunden – Verbindung ist NICHT anonym."
+    elif warns:
+        summary = f"Keine kritischen Lecks, {warns} Hinweis(e) beachten."
+    else:
+        summary = "Alles in Ordnung – Verbindung läuft über Proton VPN."
+
+    return {"checks": checks, "summary": summary, "connected": connected, "public_ip": public_ip}
+
+
 def _host_ip() -> str:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -415,6 +635,14 @@ class JobBody(BaseModel):
     filename: str | None = None
 
 
+class VpnConnectBody(BaseModel):
+    country: str | None = None
+
+
+class KillswitchBody(BaseModel):
+    enabled: bool
+
+
 # --------------------------------------------------------------------------- #
 # app
 # --------------------------------------------------------------------------- #
@@ -493,6 +721,65 @@ def status() -> dict[str, Any]:
         "rdp": {"host": _host_ip(), "port": 3389, "user": RDP_USER},
         "samba": {"share": SMB_SHARE, "path": str(DOWNLOAD_DIR)},
     }
+
+
+@app.get("/api/vpn", dependencies=[Depends(require_auth)])
+def vpn_options() -> dict[str, Any]:
+    code, out, err = _proton(["status"], timeout=25)
+    status = _parse_status(out) if code == 0 else {"connected": False}
+    return {
+        "countries": FREE_COUNTRIES,
+        "status": status,
+        "killswitch": _killswitch_enabled(),
+        "cli_available": code == 0 or "signin" in f"{out}{err}".lower(),
+        "raw": (out or err).strip()[-400:],
+    }
+
+
+@app.post("/api/vpn/connect", dependencies=[Depends(require_auth)])
+def vpn_connect(body: VpnConnectBody) -> dict[str, Any]:
+    args = ["connect"]
+    country = (body.country or "").strip().upper()
+    if country:
+        if not re.fullmatch(r"[A-Z]{2}", country):
+            raise HTTPException(status_code=400, detail="Ländercode muss 2 Buchstaben haben (z. B. NL)")
+        args += ["--country", country]
+    code, out, err = _proton(args, timeout=120)
+    if code != 0:
+        raise HTTPException(
+            status_code=502,
+            detail=(out or err or "protonvpn connect fehlgeschlagen").strip()[-800:],
+        )
+    _proton(["status"], timeout=25)
+    return {"ok": True, "output": (out or err).strip()[-400:]}
+
+
+@app.post("/api/vpn/disconnect", dependencies=[Depends(require_auth)])
+def vpn_disconnect() -> dict[str, Any]:
+    code, out, err = _proton(["disconnect"], timeout=60)
+    if code != 0:
+        raise HTTPException(
+            status_code=502,
+            detail=(out or err or "protonvpn disconnect fehlgeschlagen").strip()[-800:],
+        )
+    return {"ok": True}
+
+
+@app.post("/api/vpn/killswitch", dependencies=[Depends(require_auth)])
+def vpn_killswitch(body: KillswitchBody) -> dict[str, Any]:
+    mode = "standard" if body.enabled else "off"
+    code, out, err = _proton(["config", "set", "kill-switch", mode], timeout=60)
+    if code != 0:
+        raise HTTPException(
+            status_code=502,
+            detail=(out or err or "Killswitch konnte nicht gesetzt werden").strip()[-800:],
+        )
+    return {"ok": True, "enabled": body.enabled}
+
+
+@app.get("/api/vpn/leaktest", dependencies=[Depends(require_auth)])
+def vpn_leaktest() -> dict[str, Any]:
+    return _leak_test()
 
 
 @app.get("/api/files", dependencies=[Depends(require_auth)])

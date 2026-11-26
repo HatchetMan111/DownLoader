@@ -660,6 +660,135 @@ code,
   margin-top: 8px;
 }
 
+/* ------------------------------------------------------------ vpn panel */
+
+.vpn-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.input-wrap select {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.input-wrap select option {
+  background: #111827;
+  color: var(--text);
+}
+
+.vpn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.09);
+}
+
+.vpn-row-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 13px;
+}
+
+.leak {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.09);
+}
+
+.leak-summary {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.leak-summary.is-ok {
+  color: var(--ok);
+  border-color: rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.leak-summary.is-bad {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.leak-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.leak-item {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  font-size: 12.5px;
+}
+
+.leak-item > div {
+  display: grid;
+  min-width: 0;
+}
+
+.leak-item strong {
+  font-weight: 550;
+}
+
+.leak-item .mono {
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.leak-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.leak-item.is-pass .leak-icon {
+  color: var(--ok);
+  border-color: rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.09);
+}
+
+.leak-item.is-warn .leak-icon {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.09);
+}
+
+.leak-item.is-fail .leak-icon {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.09);
+}
+
 /* ---------------------------------------------------------- filemanager */
 
 .toolbar {

@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.18"
+SCRIPT_VERSION="2026-11-26.19"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -862,10 +862,17 @@ printf ' Samba-Passw.: %s\n' "$SMB_PASSWORD"
 printf ' Dateien     : /srv/downloads\n'
 printf ' Log         : %s\n' "$LOG_FILE"
 printf '%s\n' "-------------------------------------------------------------------"
-printf '%s\n' " Nächster Schritt (ohne RDP, im Terminal):"
+printf '%s\n' " Nächster Schritt (einmalig, ohne RDP – direkt im Terminal):"
 printf '%s\n' "   pct exec ${PDB_CT_ID:-<CT-ID>} -- bash /usr/local/bin/pdb-proton-setup"
-printf '%s\n' " → Email + Passwort deines Proton-Free-Accounts eingeben –"
-printf '%s\n' "   Killswitch + Verbindung werden automatisch eingerichtet."
-printf '%s\n' " RDP bleibt optional für die App-Oberfläche."
+printf '%s\n' "   (oder ohne installiertes Skript:)"
+printf '%s\n' "   pct exec ${PDB_CT_ID:-<CT-ID>} -- bash -c 'curl -fsSL -o /tmp/s.sh \\"
+printf '%s\n' "     https://raw.githubusercontent.com/HatchetMan111/DownLoader/main/scripts/pdb-proton-setup.sh && bash /tmp/s.sh'"
+printf '%s\n' " → Email + Passwort eingeben; Killswitch, Verbindung und"
+printf '%s\n' "   LAN-Route (RDP/Samba bleiben erreichbar) werden automatisch gesetzt."
+printf '%s\n' ""
+printf '%s\n' " Danach in der Web UI (Tab 'VPN-Steuerung'):"
+printf '%s\n' "   • Serverstandort wechseln (NL/US/JP/RO/PL)"
+printf '%s\n' "   • Verbinden / Trennen, Killswitch ein-/ausschalten"
+printf '%s\n' "   • 'Leak-Test': prüft IP, DNS, IPv6, Killswitch und LAN-Route"
 printf '%s\n' "-------------------------------------------------------------------"
 printf '\n'

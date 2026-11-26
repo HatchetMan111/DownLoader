@@ -73,6 +73,20 @@ export const api = {
   },
   fileUrl: (path) => `/api/files/download?path=${enc(path)}`,
 
+  vpnOptions: () => request("/api/vpn"),
+  vpnConnect: (country) =>
+    request("/api/vpn/connect", {
+      method: "POST",
+      body: JSON.stringify({ country: country || null }),
+    }),
+  vpnDisconnect: () => request("/api/vpn/disconnect", { method: "POST" }),
+  vpnKillswitch: (enabled) =>
+    request("/api/vpn/killswitch", {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    }),
+  vpnLeaktest: () => request("/api/vpn/leaktest"),
+
   jobs: () => request("/api/jobs"),
   startJob: (url, filename) =>
     request("/api/jobs", {

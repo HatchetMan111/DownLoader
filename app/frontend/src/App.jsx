@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import Downloader from "./components/Downloader.jsx";
 import FileManager from "./components/FileManager.jsx";
 import Login from "./components/Login.jsx";
 import StatusPanel from "./components/StatusPanel.jsx";
+import VpnPanel from "./components/VpnPanel.jsx";
 import { Logout, Shield } from "./components/Icons.jsx";
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
   const [status, setStatus] = useState(null);
   const [statusError, setStatusError] = useState("");
   const [focus, setFocus] = useState(null);
+  const refreshStatusRef = useRef(null);
 
   const handleUnauthorized = useCallback(() => {
     setAuth(false);
@@ -51,11 +53,16 @@ export default function App() {
 
     tick();
     const timer = setInterval(tick, 3000);
+    refreshStatusRef.current = tick;
     return () => {
       alive = false;
       clearInterval(timer);
     };
   }, [auth]);
+
+  const refreshStatus = useCallback(() => {
+    if (refreshStatusRef.current) refreshStatusRef.current();
+  }, []);
 
   async function logout() {
     try {
@@ -119,6 +126,10 @@ export default function App() {
 
         <div className="main-col">
           {statusError && <p className="banner">{statusError}</p>}
+          <VpnPanel
+            onUnauthorized={handleUnauthorized}
+            onChanged={refreshStatus}
+          />
           <Downloader
             onUnauthorized={handleUnauthorized}
             onReveal={(target) => setFocus({ path: target, nonce: Date.now() })}

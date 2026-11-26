@@ -170,6 +170,34 @@ Der Desktop startet mit **deutschem Layout** (`de`) — `@` ist wie gewohnt
   im Explorer/Finder
 - **RDP** nur noch bei Bedarf (z. B. Serverland wechseln)
 
+### 4. VPN direkt aus der Web UI steuern
+
+Der Tab **„VPN-Steuerung"** bietet alles, wofür man sonst den Desktop braucht:
+
+| Funktion | Was passiert |
+|---|---|
+| **Serverstandort** | Dropdown mit NL/US/JP/RO/PL oder „Automatisch" → `protonvpn connect --country XX` |
+| **Verbinden / Trennen** | startet/stoppt den Tunnel sofort |
+| **Killswitch** | schaltet `standard` (an) bzw. `off` |
+| **Leak-Test** | prüft Tunnel, öffentliche IP (Vergleich mit der IP von vor der Verbindung), DNS-Server, Namensauflösung, IPv6-Leck, Killswitch und LAN-Route — mit Klartext-Ergebnis pro Punkt |
+
+Beispiel-Ergebnis des Leak-Tests:
+
+```
+Alles in Ordnung – Verbindung läuft über Proton VPN.
+✓ VPN-Tunnel aktiv            proton0
+✓ Öffentliche IP verschleiert 185.159.x.x (vorher 10.120.1.142)
+✓ DNS über Proton             10.2.0.1, 10.2.0.2
+✓ Namensauflösung funktioniert
+✓ Kein IPv6-Leck             keine globale IPv6-Adresse
+✓ Killswitch aktiv           standard
+✓ LAN-Route (RDP/Samba erreichbar)
+```
+
+> Der Leak-Test ist eine **Plausibilitätsprüfung** (eigene Messungen im
+> Container), kein externer Audit-Dienst. Er erkennt die typischen Fehler:
+> Tunnel aus, echte IP sichtbar, ISP-DNS aktiv, IPv6 neben dem Tunnel.
+
 > **Proton Free Limits:** kein P2P/Torrents, 1 Gerät gleichzeitig, begrenzte
 > Serverauswahl. Die Web-UI zeigt Tunnelstatus und öffentliche IP, damit man
 > den Tunnel prüfen kann.
@@ -214,7 +242,7 @@ app/backend/main.py                 # FastAPI-Backend
 app/frontend/                       # React + Vite (Quellcode)
 app/frontend/dist/                  # gebaute UI (vom Installer genutzt)
 test/lint.sh                        # statische Prüfungen
-test/smoke.sh                       # API-Smoke-Test ohne Proxmox (33 Checks)
+test/smoke.sh                       # API-Smoke-Test ohne Proxmox (41 Checks)
 test/installer.sh                   # Installer-Logik mit pct/pvesm-Stubs (23 Checks)
 test/pve-reboot-test.sh             # Install → Reboot → UI erreichbar (auf dem Host)
 docs/TROUBLESHOOTING.md             # Fehlerdiagnose
@@ -263,7 +291,7 @@ ERGEBNIS: Installation → Reboot → Web UI erreichbar: OK
 ```
 
 > **Hinweis zur Verifikation:** Backend, API, Frontend-Build und
-> Installer-Logik sind hier vollständig getestet (33 API-Checks,
+> Installer-Logik sind hier vollständig getestet (41 API-Checks,
 > 23 Installer-Checks – alle grün). Den LXC-End-to-End-Lauf auf einem echten
 > Proxmox-Host (inkl. Reboot) liefert `test/pve-reboot-test.sh` – dafür wird
 > ein Proxmox-Host benötigt.
