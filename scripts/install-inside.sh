@@ -262,23 +262,6 @@ fi
 rm -f /tmp/proton-InRelease /tmp/proton-gpgv.err
 ok "Keyring verifiziert (gpgv): $KEYRING"
 
-# Fail fast mit vollen Diagnosen statt kryptischem apt-GPG-Fehler:
-# dieselbe Verifikation, die apt macht (gpgv), direkt ausführen.
-curl -fsSL --retry 3 --retry-delay 2 \
-  https://repo.protonvpn.com/debian/dists/stable/InRelease -o /tmp/proton-InRelease \
-  || die "InRelease konnte nicht geladen werden"
-if ! gpgv --keyring "$KEYRING" /tmp/proton-InRelease 2>/tmp/proton-gpgv.err; then
-  warn "gpgv-Verifikation fehlgeschlagen – Diagnose:"
-  cat /tmp/proton-gpgv.err >&2 || true
-  ls -la "$KEYRING" >&2 || true
-  file "$KEYRING" >&2 || true
-  head -c 120 /tmp/proton-InRelease >&2 || true
-  rm -f /tmp/proton-InRelease
-  die "Proton-Keyring im Container nicht verwendbar – Details oben"
-fi
-rm -f /tmp/proton-InRelease /tmp/proton-gpgv.err
-ok "Keyring verifiziert (gpgv): $KEYRING"
-
 # --------------------------------------------------------------------------- #
 # 3. desktop + Proton VPN app
 # --------------------------------------------------------------------------- #
