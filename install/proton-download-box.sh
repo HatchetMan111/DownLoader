@@ -307,9 +307,11 @@ wait_for_network() {
 }
 
 wait_for_dpkg() {
+  # [a]pt/[d]pkg-Klammer-Trick: verhindert, dass pgrep die eigene
+  # Kommandozeile (mit dem Pattern-Text) matcht.
   pct exec "$CT_ID" -- bash -c '
     for i in {1..60}; do
-      if ! pgrep -f "apt-get|dpkg" >/dev/null 2>&1; then exit 0; fi
+      if ! pgrep -f "[a]pt-get|[d]pkg" >/dev/null 2>&1; then exit 0; fi
       sleep 2
     done
     exit 1
