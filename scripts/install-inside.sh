@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.12"
+SCRIPT_VERSION="2026-11-26.14"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -490,6 +490,80 @@ fi
 ok "xrdp lauscht auf 3389"
 
 # --------------------------------------------------------------------------- #
+# 5b. Terminal-Setup für Proton VPN (komplett ohne Desktop/Dialoge)
+# --------------------------------------------------------------------------- #
+
+msg "Terminal-Setup-Skript installieren"
+cat >/usr/local/bin/pdb-proton-setup <<'EOF'
+#!/usr/bin/env bash
+# Proton VPN komplett per Terminal einrichten – kein Desktop, keine Dialoge.
+#   pct exec <CT-ID> -- bash /usr/local/bin/pdb-proton-setup
+set -euo pipefail
+RDP_USER="proton"
+if [[ $EUID -eq 0 ]]; then
+  exec runuser -u "$RDP_USER" -- bash /usr/local/bin/pdb-proton-setup
+fi
+unset XDG_RUNTIME_DIR
+eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1
+eval "$(printf "\n" | gnome-keyring-daemon --unlock --replace \
+  --components=secrets)" >/dev/null 2>&1
+
+printf '\n=== Proton VPN – Anmeldung (Email + Passwort deines Free-Accounts)\n'
+protonvpn signin
+
+printf '\n=== Killswitch aktivieren\n'
+protonvpn config set kill-switch standard
+
+printf '\n=== Verbinden (schnellster Free-Server)\n'
+protonvpn connect
+
+printf '\n=== LAN freischalten (RDP/Samba bleiben erreichbar)\n'
+/usr/local/bin/pdb-lan-fix || true
+
+printf '\n=== Status\n'
+protonvpn status
+printf '\nFertig. Der Tunnel verbindet ab jetzt automatisch beim Boot,\n'
+printf 'RDP/Samba/Web-UI bleiben über das LAN erreichbar.\n'
+EOF
+chmod 0755 /usr/local/bin/pdb-proton-setup
+
+cat >/usr/local/bin/pdb-proton-connect <<'EOF'
+#!/usr/bin/env bash
+# Verbindet den Tunnel beim Boot (systemd). Still, wenn noch kein Login.
+set -u
+RDP_USER="proton"
+if [[ $EUID -eq 0 ]]; then
+  exec runuser -u "$RDP_USER" -- bash /usr/local/bin/pdb-proton-connect
+fi
+unset XDG_RUNTIME_DIR
+eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1
+eval "$(printf "\n" | gnome-keyring-daemon --unlock --replace \
+  --components=secrets)" >/dev/null 2>&1
+protonvpn connect >/dev/null 2>&1 \
+  || echo "Proton: noch nicht angemeldet – pdb-proton-setup ausführen"
+/usr/local/bin/pdb-lan-fix >/dev/null 2>&1 || true
+EOF
+chmod 0755 /usr/local/bin/pdb-proton-connect
+
+cat >/etc/systemd/system/pdb-proton-autoconnect.service <<'EOF'
+[Unit]
+Description=Proton VPN Autoconnect beim Boot
+After=network-online.target proton-vpn-daemon.service NetworkManager.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=proton
+ExecStart=/usr/local/bin/pdb-proton-connect
+ExecStop=/usr/local/bin/pdb-proton-connect
+EOF
+# ExecStop trennt nicht – trennen macht protonvpn disconnect; hier genügt Start.
+systemctl daemon-reload
+systemctl enable pdb-proton-autoconnect >/dev/null 2>&1 || true
+ok "Terminal-Setup: pct exec 109 -- bash /usr/local/bin/pdb-proton-setup"
+
+# --------------------------------------------------------------------------- #
 # 6. NetworkManager: manage the tunnel, never touch eth0
 # --------------------------------------------------------------------------- #
 
@@ -507,9 +581,32 @@ EOF
 # Keep DNS working: while the tunnel is up, use Proton's resolver.
 [[ -f /etc/resolv.conf.pdb-orig ]] || cp -f /etc/resolv.conf /etc/resolv.conf.pdb-orig
 install -d -m 0755 /etc/NetworkManager/dispatcher.d
+
+# LAN-Route, die Vorrang vor dem Tunnel behält. Ohne das schickt Proton alle
+# Pakete in den Tunnel – auch den Rückweg der RDP-Verbindung aus dem LAN –
+# und die Sitzung bricht ab ("Verbindung wird wiederhergestellt").
+cat >/usr/local/bin/pdb-lan-fix <<'EOF'
+#!/usr/bin/env bash
+# Sorgt dafür, dass LAN-Verkehr (RDP/Samba/Web-UI) immer über eth0 läuft,
+# auch wenn der VPN-Tunnel aktiv ist. Idempotent, gefahrlos mehrfach ausführbar.
+set -u
+ip4=$(ip -4 -o addr show dev eth0 2>/dev/null | awk '{print $4; exit}')
+[ -n "$ip4" ] || exit 0
+lan=$(python3 -c 'import ipaddress,sys; print(ipaddress.ip_interface(sys.argv[1]).network)' "$ip4" 2>/dev/null) || exit 0
+gw=$(ip route show default dev eth0 2>/dev/null | awk '{print $3; exit}')
+[ -n "$gw" ] || gw=$(ip -4 -o addr show dev eth0 | awk '{print $4}' | cut -d/ -f1 | awk -F. '{print $1"."$2"."$3".1"}')
+# 1) konkrete LAN-Route in der Haupttabelle
+ip route replace "$lan" via "$gw" dev eth0 2>/dev/null || true
+# 2) Regel: LAN-Ziele immer über die Haupttabelle (umgeht Tunnel-Policy-Routing)
+ip rule del to "$lan" lookup main priority 100 2>/dev/null || true
+ip rule add to "$lan" lookup main priority 100 2>/dev/null || true
+echo "LAN $lan -> $gw über eth0 freigeschaltet"
+EOF
+chmod 0755 /usr/local/bin/pdb-lan-fix
+
 cat >/etc/NetworkManager/dispatcher.d/50-proton-download-box <<'EOF'
 #!/usr/bin/env bash
-# Point the container at Proton's DNS while the tunnel is up, restore after.
+# DNS + LAN-Route bei Tunnel-Auf/-Abbau pflegen.
 set -u
 IFACE="${1:-}"
 ACTION="${2:-}"
@@ -521,6 +618,7 @@ case "$ACTION" in
       proton*|wg*|tun*|tap*)
         [ -f "$ORIG" ] || cp -f /etc/resolv.conf "$ORIG" 2>/dev/null || true
         printf 'nameserver 10.2.0.1\nnameserver 10.2.0.2\n' > /etc/resolv.conf
+        /usr/local/bin/pdb-lan-fix >/dev/null 2>&1 || true
         ;;
     esac
     ;;
@@ -745,7 +843,10 @@ printf ' Samba-Passw.: %s\n' "$SMB_PASSWORD"
 printf ' Dateien     : /srv/downloads\n'
 printf ' Log         : %s\n' "$LOG_FILE"
 printf '%s\n' "-------------------------------------------------------------------"
-printf '%s\n' " Nächster Schritt: per RDP anmelden – Proton VPN öffnet sich direkt."
-printf '%s\n' " Einmalig: einloggen, verbinden, Killswitch aktivieren – fertig."
+printf '%s\n' " Nächster Schritt (ohne RDP, im Terminal):"
+printf '%s\n' "   pct exec 109 -- bash /usr/local/bin/pdb-proton-setup"
+printf '%s\n' " → Email + Passwort deines Proton-Free-Accounts eingeben –"
+printf '%s\n' "   Killswitch + Verbindung werden automatisch eingerichtet."
+printf '%s\n' " RDP bleibt optional für die App-Oberfläche."
 printf '%s\n' "-------------------------------------------------------------------"
 printf '\n'
