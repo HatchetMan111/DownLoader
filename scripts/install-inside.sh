@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.11"
+SCRIPT_VERSION="2026-11-26.12"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -389,6 +389,10 @@ rm -rf "$KEYRING_DIR"
 install -d -o "$RDP_USER" -g "$RDP_USER" -m 0700 "$KEYRING_DIR"
 # shellcheck disable=SC2016
 if runuser -u "$RDP_USER" -- env HOME="/home/$RDP_USER" bash -c '
+      # pct exec als root vererbt ein kaputtes XDG_RUNTIME_DIR (/run/user/0)
+      # – ohne dieses unset startet dbus-launch nicht ("transient service
+      # directory" Fehler) und die Keyring-Anlage schlägt STILL fehl.
+      unset XDG_RUNTIME_DIR
       eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1 || exit 1
       printf "\n" | gnome-keyring-daemon --unlock --replace \
         --components=secrets >/dev/null 2>&1
@@ -468,8 +472,17 @@ systemctl enable xrdp >/dev/null 2>&1
 systemctl restart xrdp
 ok "xrdp aktiv (Port 3389)"
 
-# Sicherstellen, dass xrdp wirklich auf 3389 lauscht.
-if ! ss -tln 2>/dev/null | grep -q ':3389 '; then
+# Sicherstellen, dass xrdp wirklich auf 3389 lauscht (mit Retry: direkt
+# nach dem Restart braucht der Socket bis zu wenigen Sekunden).
+rdp_ok=0
+for _ in $(seq 1 20); do
+  if ss -tln 2>/dev/null | grep -q ':3389 '; then
+    rdp_ok=1
+    break
+  fi
+  sleep 1
+done
+if [[ $rdp_ok -ne 1 ]]; then
   systemctl status xrdp --no-pager -l 2>&1 | tail -n 20 >&2 || true
   journalctl -u xrdp --no-pager -n 30 >&2 || true
   die "xrdp lauscht nicht auf Port 3389"
