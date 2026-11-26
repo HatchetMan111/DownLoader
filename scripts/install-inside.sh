@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.16"
+SCRIPT_VERSION="2026-11-26.17"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -593,7 +593,7 @@ EOF
 # ExecStop trennt nicht – trennen macht protonvpn disconnect; hier genügt Start.
 systemctl daemon-reload
 systemctl enable pdb-proton-autoconnect >/dev/null 2>&1 || true
-ok "Terminal-Setup: pct exec 109 -- bash /usr/local/bin/pdb-proton-setup"
+ok "Terminal-Setup: pct exec ${PDB_CT_ID:-<CT-ID>} -- bash /usr/local/bin/pdb-proton-setup"
 
 # --------------------------------------------------------------------------- #
 # 6. NetworkManager: manage the tunnel, never touch eth0
@@ -899,7 +899,7 @@ printf ' Dateien     : /srv/downloads\n'
 printf ' Log         : %s\n' "$LOG_FILE"
 printf '%s\n' "-------------------------------------------------------------------"
 printf '%s\n' " Nächster Schritt (ohne RDP, im Terminal):"
-printf '%s\n' "   pct exec 109 -- bash /usr/local/bin/pdb-proton-setup"
+printf '%s\n' "   pct exec ${PDB_CT_ID:-<CT-ID>} -- bash /usr/local/bin/pdb-proton-setup"
 printf '%s\n' " → Email + Passwort deines Proton-Free-Accounts eingeben –"
 printf '%s\n' "   Killswitch + Verbindung werden automatisch eingerichtet."
 printf '%s\n' " RDP bleibt optional für die App-Oberfläche."

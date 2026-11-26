@@ -22,6 +22,9 @@ set -Eeuo pipefail
 APP_NAME="proton-download-box"
 APP_TITLE="Proton Download Box"
 APP_DESC="Proton VPN Free download box with desktop, file manager and web UI"
+# Muss zur SCRIPT_VERSION in scripts/install-inside.sh passen. Weicht die
+# geladene Payload ab, war der GitHub-Cache veraltet (wird laut gemeldet).
+EXPECTED_SCRIPT_VERSION="2026-11-26.17"
 PVE_ETC="${PVE_ETC:-/etc/pve}"
 
 # --- GitHub source -----------------------------------------------------------
@@ -450,14 +453,33 @@ prepare_payload() {
       || die "GitHub-Repo ist noch der Platzhalter 'USER/REPO'. Bitte in install/${APP_NAME}.sh ersetzen oder --local-dir nutzen."
     msg "Payload von GitHub laden: ${GITHUB_REPO}@${GITHUB_REF}"
     PAYLOAD_TMP=$(mktemp -d /tmp/${APP_NAME}.XXXXXX)
+    local dirs=()
+
     if ! curl -fsSL --retry 3 --retry-delay 2 -o "$PAYLOAD_TMP/repo.tar.gz" "$REPO_TARBALL"; then
       die "Download fehlgeschlagen: $REPO_TARBALL (Repo/Ref prüfen)"
     fi
     tar -xzf "$PAYLOAD_TMP/repo.tar.gz" -C "$PAYLOAD_TMP"
-    local dirs=()
     mapfile -t dirs < <(find "$PAYLOAD_TMP" -maxdepth 1 -mindepth 1 -type d)
     ((${#dirs[@]} > 0)) || die "Tarball enthält kein Verzeichnis"
     src="${dirs[0]}"
+
+    # Veralteter CDN-Cache? Dann über die GitHub-API frisch nachladen –
+    # sonst installiert man unbemerkt eine alte Version.
+    local ver=""
+    ver=$(sed -n 's/^SCRIPT_VERSION="\(.*\)"$/\1/p' "$src/scripts/install-inside.sh" | head -n1)
+    if [[ -n "$ver" && "$ver" != "$EXPECTED_SCRIPT_VERSION" ]]; then
+      warn "Payload veraltet ($ver statt $EXPECTED_SCRIPT_VERSION) – lade über GitHub-API neu"
+      rm -rf "${PAYLOAD_TMP:?}"/*
+      dirs=()
+      if curl -fsSL --retry 3 --retry-delay 2 -o "$PAYLOAD_TMP/repo.tar.gz" \
+           "https://api.github.com/repos/${GITHUB_REPO}/tarball/${GITHUB_REF}"; then
+        tar -xzf "$PAYLOAD_TMP/repo.tar.gz" -C "$PAYLOAD_TMP"
+        mapfile -t dirs < <(find "$PAYLOAD_TMP" -maxdepth 1 -mindepth 1 -type d)
+        ((${#dirs[@]} > 0)) && src="${dirs[0]}"
+      else
+        warn "API-Download fehlgeschlagen – nutze die (ältere) Version $ver"
+      fi
+    fi
   fi
 
   [[ -f "$src/scripts/install-inside.sh" ]] || die "Payload unvollständig: $src/scripts/install-inside.sh fehlt"
@@ -472,6 +494,12 @@ prepare_payload() {
     --exclude='*.pyc' \
     scripts app config
   ok "Payload gepackt ($(du -h "$PAYLOAD_TAR" | cut -f1))"
+  # Zeigt die tatsächlich geladene Payload-Version – damit ein veralteter
+  # GitHub-Cache sofort auffällt.
+  local payload_ver
+  payload_ver=$(sed -n 's/^SCRIPT_VERSION="\(.*\)"$/\1/p' "$src/scripts/install-inside.sh" 2>/dev/null | head -n1)
+  PAYLOAD_VERSION="${payload_ver:-unbekannt}"
+  ok "Payload-Version: $PAYLOAD_VERSION (erwartet: $EXPECTED_SCRIPT_VERSION)"
 }
 
 # --------------------------------------------------------------------------- #
@@ -546,6 +574,7 @@ run_inside() {
   umask 077
   cat >"$INSTALL_ENV" <<EOF
 PDB_PORT='${PORT}'
+PDB_CT_ID='${CT_ID}'
 PDB_TZ='${TZ_VALUE}'
 PDB_KBD_LAYOUT='${KBD_LAYOUT}'
 PDB_PASSWORD='${WEB_PASSWORD}'
