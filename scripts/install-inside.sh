@@ -14,7 +14,14 @@
 # =============================================================================
 set -Eeuo pipefail
 
+SCRIPT_VERSION="2026-11-26.4"
+
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
+# und der Host-Installer setzt 077 für die Passwort-Datei. Ohne Reset würden
+# hier Dateien als 0600 landen (apt's _apt-User könnte den Keyring nicht
+# lesen → "Unknown error executing apt-key").
+umask 022
 PORT="${PDB_PORT:-8080}"
 TZ_VALUE="${PDB_TZ:-Europe/Berlin}"
 WEB_PASSWORD="${PDB_PASSWORD:-}"
@@ -160,7 +167,7 @@ fi
 [[ -n "$RDP_PASSWORD" ]] || RDP_PASSWORD=$(gen_password)
 [[ -n "$SMB_PASSWORD" ]] || SMB_PASSWORD="$RDP_PASSWORD"
 
-msg "proton-download-box wird installiert (Port $PORT)"
+msg "proton-download-box wird installiert (Port $PORT) – Installer-Version $SCRIPT_VERSION"
 
 # --------------------------------------------------------------------------- #
 # 1. timezone + base packages
@@ -187,37 +194,63 @@ apt_install \
 # --------------------------------------------------------------------------- #
 
 msg "Proton-VPN-Repository einrichten"
-# Debian 12 (apt >= 2.4) unterstützt armored .asc-Dateien direkt in signed-by –
-# ganz ohne volles gpg/agent (das verursacht in unprivilegierten LXC
-# "Unknown error executing apt-key"; gpgv läuft dagegen einwandfrei, wie das
-# erfolgreiche Basis-apt-Update zeigt). Muster wie bei Dockers offizieller
-# Bookworm-Installation.
-install -d -m 0755 /etc/apt/keyrings
+install -d -m 0755 /usr/share/keyrings /etc/apt/keyrings
 
 KEYRING_URL="https://repo.protonvpn.com/debian/public_key.asc"
-KEYRING="/etc/apt/keyrings/protonvpn-stable-archive-keyring.asc"
-# Legacy-Keyrings aus früheren Installer-Versionen entfernen
-rm -f /usr/share/keyrings/protonvpn-public.asc \
-      /usr/share/keyrings/protonvpn-stable-archive-keyring.gpg
+KEYRING="/usr/share/keyrings/protonvpn-stable-archive-keyring.gpg"
+# Legacy-Keyrings früherer Versionen entfernen
+rm -f /etc/apt/keyrings/protonvpn-stable-archive-keyring.asc \
+      /usr/share/keyrings/protonvpn-public.asc
 
 if [[ ! -s "$KEYRING" ]]; then
-  curl -fsSL --retry 3 --retry-delay 2 "$KEYRING_URL" -o "$KEYRING" \
+  curl -fsSL --retry 3 --retry-delay 2 "$KEYRING_URL" -o /tmp/proton-public.asc \
     || die "Proton-Schlüssel konnte nicht geladen werden: $KEYRING_URL"
+  [[ -s /tmp/proton-public.asc ]] || die "Schlüssel-Datei ist leer: $KEYRING_URL"
+  if ! grep -q "BEGIN PGP PUBLIC KEY BLOCK" /tmp/proton-public.asc; then
+    head -c 200 /tmp/proton-public.asc >&2 || true
+    rm -f /tmp/proton-public.asc
+    die "Schlüssel-Datei enthält keinen PGP-Public-Key-Block (Download defekt?)"
+  fi
+  # Container-sicher dearmoren: reines Python-stdlib – KEIN gpg/agent (der
+  # verursacht in unprivilegierten LXC "Unknown error executing apt-key";
+  # gpgv läuft dagegen einwandfrei, wie das erfolgreiche Basis-apt-Update zeigt).
+  python3 - "$KEYRING" <<'PYEOF' || die "Keyring-Erzeugung (dearmor) fehlgeschlagen"
+import base64, re, sys
+src = "/tmp/proton-public.asc"
+text = open(src, encoding="utf-8", errors="replace").read()
+match = re.search(
+    r"-----BEGIN PGP PUBLIC KEY BLOCK-----(.*?)-----END PGP PUBLIC KEY BLOCK-----",
+    text, re.S,
+)
+if not match:
+    sys.exit("kein PGP-Public-Key-Block gefunden")
+lines = [line.strip() for line in match.group(1).splitlines()]
+lines = [line for line in lines if line and not line.startswith(":")]
+if lines and lines[-1].startswith("="):
+    lines = lines[:-1]  # CRC-Prüfsummen-Zeile
+open(sys.argv[1], "wb").write(base64.b64decode("".join(lines)))
+PYEOF
+  rm -f /tmp/proton-public.asc
+  [[ -s "$KEYRING" ]] || die "Keyring nach Dearmor leer – Abbruch."
+  chmod 0644 "$KEYRING"
 fi
-[[ -s "$KEYRING" ]] || die "Schlüssel-Datei ist leer: $KEYRING"
-chmod 0644 "$KEYRING"
 
-# Plausibilitätsprüfung mit klarer Fehlermeldung statt generischem apt-GPG-Fehler
-if ! grep -q "BEGIN PGP PUBLIC KEY BLOCK" "$KEYRING"; then
-  rm -f "$KEYRING"
-  die "Schlüssel-Datei enthält keinen PGP-Public-Key-Block: $KEYRING (Download defekt?)"
+# Fail fast mit vollen Diagnosen statt kryptischem apt-GPG-Fehler:
+# dieselbe Verifikation, die apt macht (gpgv), direkt ausführen.
+curl -fsSL --retry 3 --retry-delay 2 \
+  https://repo.protonvpn.com/debian/dists/stable/InRelease -o /tmp/proton-InRelease \
+  || die "InRelease konnte nicht geladen werden"
+if ! gpgv --keyring "$KEYRING" /tmp/proton-InRelease 2>/tmp/proton-gpgv.err; then
+  warn "gpgv-Verifikation fehlgeschlagen – Diagnose:"
+  cat /tmp/proton-gpgv.err >&2 || true
+  ls -la "$KEYRING" >&2 || true
+  file "$KEYRING" >&2 || true
+  head -c 120 /tmp/proton-InRelease >&2 || true
+  rm -f /tmp/proton-InRelease
+  die "Proton-Keyring im Container nicht verwendbar – Details oben"
 fi
-ok "Proton-Keyring bereit: $KEYRING"
-
-cat >/etc/apt/sources.list.d/protonvpn-stable.list <<EOF
-deb [signed-by=${KEYRING}] https://repo.protonvpn.com/debian stable main
-EOF
-apt_update
+rm -f /tmp/proton-InRelease /tmp/proton-gpgv.err
+ok "Keyring verifiziert (gpgv): $KEYRING"
 
 # --------------------------------------------------------------------------- #
 # 3. desktop + Proton VPN app

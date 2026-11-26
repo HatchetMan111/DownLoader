@@ -28,7 +28,9 @@ PVE_ETC="${PVE_ETC:-/etc/pve}"
 GITHUB_REPO="${PDB_GITHUB_REPO:-HatchetMan111/DownLoader}"
 GITHUB_REF="${PDB_GITHUB_REF:-main}"
 REPO_RAW="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_REF}"
-REPO_TARBALL="https://codeload.github.com/${GITHUB_REPO}/tar.gz/refs/heads/${GITHUB_REF}"
+# Cache-Buster: codeload-Tarballs liegen kurz im Fastly-Cache – ohne Buster
+# bekommt ein sofortiger Re-Run u. U. eine ältere Version.
+REPO_TARBALL="https://codeload.github.com/${GITHUB_REPO}/tar.gz/refs/heads/${GITHUB_REF}?nocache=$(date +%s)"
 
 # --- container defaults (override with flags or environment) -----------------
 CT_ID="${CT_ID:-}"
@@ -548,6 +550,7 @@ PDB_RDP_PASSWORD='${RDP_PASSWORD}'
 PDB_SMB_USER='${RDP_USER}'
 PDB_SMB_PASSWORD='${RDP_PASSWORD}'
 EOF
+  umask 022   # zurücksetzen: pct exec / lxc-attach erbt die umask im Container!
   pct push "$CT_ID" "$INSTALL_ENV" /root/pdb-install.env
 
   msg "Installation im Container läuft (das dauert einige Minuten)"
