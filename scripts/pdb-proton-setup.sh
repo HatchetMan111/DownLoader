@@ -56,32 +56,69 @@ if ! command -v protonvpn >/dev/null 2>&1; then
 fi
 
 printf '\n=== Proton VPN einrichten (kostenloser Account)\n'
-printf 'Account anlegen (falls nötig): https://account.proton.me/vpn\n\n'
 
-read -rp 'Proton-Email: ' PUSER || PUSER=""
-if [[ -z "${PUSER:-}" ]]; then
-  printf 'Keine Email eingegeben – Abbruch.\n'
-  exit 1
+SIGNED_IN=false
+if protonvpn info >/dev/null 2>&1; then
+  SIGNED_IN=true
+  printf 'Bereits angemeldet – Anmeldung wird übersprungen.\n'
 fi
 
-TOTP=""
-read -rp 'Authenticator-App / 2FA-Code statt Security-Key? [j/N] ' ans || ans=""
-case "${ans,,}" in
-  j*) TOTP="--totp" ;;
-esac
+if [[ "$SIGNED_IN" != true ]]; then
+  printf 'Account anlegen (falls nötig): https://account.proton.me/vpn\n\n'
 
-printf '\nPasswort (Eingabe bleibt unsichtbar):\n'
-# shellcheck disable=SC2086  # $TOTP soll bei leerer Variable verschwinden
-if ! protonvpn signin "$PUSER" $TOTP; then
-  printf '\nAnmeldung fehlgeschlagen. Prüfe Email/Passwort und versuche es erneut.\n'
-  exit 1
+  read -rp 'Proton-Email: ' PUSER || PUSER=""
+  if [[ -z "${PUSER:-}" ]]; then
+    printf 'Keine Email eingegeben – Abbruch.\n'
+    exit 1
+  fi
+
+  TOTP=""
+  read -rp 'Authenticator-App / 2FA-Code statt Security-Key? [j/N] ' ans || ans=""
+  case "${ans,,}" in
+    j*) TOTP="--totp" ;;
+  esac
+
+  printf '\nPasswort (Eingabe bleibt unsichtbar):\n'
+  # shellcheck disable=SC2086  # $TOTP soll bei leerer Variable verschwinden
+  if ! protonvpn signin "$PUSER" $TOTP; then
+    printf '\nAnmeldung fehlgeschlagen. Prüfe Email/Passwort und versuche es erneut.\n'
+    exit 1
+  fi
 fi
 
 printf '\n=== Killswitch aktivieren\n'
 protonvpn config set kill-switch standard || printf 'Hinweis: Killswitch konnte nicht gesetzt werden.\n'
 
 printf '\n=== Verbinden (schnellster Free-Server)\n'
-protonvpn connect || printf 'Hinweis: Verbindung konnte nicht aufgebaut werden.\n'
+if ! protonvpn connect; then
+  printf '\n--- Verbindung fehlgeschlagen: Diagnose ---\n'
+  printf 'TUN-Gerät: '
+  if [[ -c /dev/net/tun ]]; then
+    printf 'vorhanden (/dev/net/tun)\n'
+  else
+    printf 'FEHLT (/dev/net/tun) – im LXC durchreichen\n'
+  fi
+  printf 'NetworkManager: %s\n' "$(systemctl is-active NetworkManager 2>&1 | head -n1)"
+  printf 'Aktive Verbindungen:\n'
+  nmcli -t -f NAME,TYPE connection show --active 2>&1 | head -n 5 | sed 's/^/  /'
+  printf '\nVerbose-Ausgabe:\n'
+  protonvpn --verbose connect 2>&1 | tail -n 25 | sed 's/^/  /'
+
+  printf '\nProton-Logs:\n'
+  shopt -s nullglob
+  for f in "$HOME"/.cache/*[Pp]roton*[Vv][Pp][Nn]/logs/* \
+           "$HOME"/.cache/ProtonVPN/logs/* \
+           "$HOME"/.cache/protonvpn/logs/*; do
+    [[ -f "$f" ]] || continue
+    printf '  --- %s\n' "$f"
+    tail -n 12 "$f" 2>/dev/null | sed 's/^/  /'
+  done
+  shopt -u nullglob
+
+  printf '\nNächster Schritt: obige Diagnose prüfen. Häufig hilft:\n'
+  printf '  pct exec <CT-ID> -- systemctl restart proton-vpn-daemon NetworkManager\n'
+  printf '  (danach dieses Skript erneut starten)\n'
+fi
 
 printf '\n=== LAN freischalten\n'
 lan_fix
