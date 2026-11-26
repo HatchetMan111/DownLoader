@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.4"
+SCRIPT_VERSION="2026-11-26.5"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -173,6 +173,15 @@ msg "proton-download-box wird installiert (Port $PORT) – Installer-Version $SC
 # 1. timezone + base packages
 # --------------------------------------------------------------------------- #
 
+# WICHTIG: Proton-Repo-Reste aus früheren Läufen VOR dem ersten apt-Lauf
+# entfernen – sonst scheitert die Basis-Aktualisierung am (evtl. kaputten)
+# Proton-Keyring und das Skript stirbt, bevor Sektion 2 den Keyring repariert.
+rm -f /etc/apt/sources.list.d/protonvpn-stable.list \
+      /usr/share/keyrings/protonvpn-public.asc \
+      /usr/share/keyrings/protonvpn-stable-archive-keyring.gpg \
+      /etc/apt/keyrings/protonvpn-stable-archive-keyring.asc
+ok "Alte Proton-Repo-Reste entfernt"
+
 if [[ -n "$TZ_VALUE" && -f "/usr/share/zoneinfo/$TZ_VALUE" ]]; then
   ln -sf "/usr/share/zoneinfo/$TZ_VALUE" /etc/localtime
   printf '%s\n' "$TZ_VALUE" >/etc/timezone
@@ -194,11 +203,12 @@ apt_install \
 # --------------------------------------------------------------------------- #
 
 msg "Proton-VPN-Repository einrichten"
-install -d -m 0755 /usr/share/keyrings /etc/apt/keyrings
+install -d -m 0755 /usr/share/keyrings
 
 KEYRING_URL="https://repo.protonvpn.com/debian/public_key.asc"
 KEYRING="/usr/share/keyrings/protonvpn-stable-archive-keyring.gpg"
-# Legacy-Keyrings früherer Versionen entfernen
+# Legacy-Dateien früherer Versionen entfernen (binärer Keyring mit .asc-Endung
+# etc. – apt behandelt .asc als armored → "Invalid packet")
 rm -f /etc/apt/keyrings/protonvpn-stable-archive-keyring.asc \
       /usr/share/keyrings/protonvpn-public.asc
 
@@ -234,6 +244,23 @@ PYEOF
   [[ -s "$KEYRING" ]] || die "Keyring nach Dearmor leer – Abbruch."
   chmod 0644 "$KEYRING"
 fi
+
+# Fail fast mit vollen Diagnosen statt kryptischem apt-GPG-Fehler:
+# dieselbe Verifikation, die apt macht (gpgv), direkt ausführen.
+curl -fsSL --retry 3 --retry-delay 2 \
+  https://repo.protonvpn.com/debian/dists/stable/InRelease -o /tmp/proton-InRelease \
+  || die "InRelease konnte nicht geladen werden"
+if ! gpgv --keyring "$KEYRING" /tmp/proton-InRelease 2>/tmp/proton-gpgv.err; then
+  warn "gpgv-Verifikation fehlgeschlagen – Diagnose:"
+  cat /tmp/proton-gpgv.err >&2 || true
+  ls -la "$KEYRING" >&2 || true
+  file "$KEYRING" >&2 || true
+  head -c 120 /tmp/proton-InRelease >&2 || true
+  rm -f /tmp/proton-InRelease
+  die "Proton-Keyring im Container nicht verwendbar – Details oben"
+fi
+rm -f /tmp/proton-InRelease /tmp/proton-gpgv.err
+ok "Keyring verifiziert (gpgv): $KEYRING"
 
 # Fail fast mit vollen Diagnosen statt kryptischem apt-GPG-Fehler:
 # dieselbe Verifikation, die apt macht (gpgv), direkt ausführen.
