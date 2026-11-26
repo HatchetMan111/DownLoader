@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.10"
+SCRIPT_VERSION="2026-11-26.11"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -376,34 +376,29 @@ EOF
 chmod 0755 "/home/$RDP_USER/Desktop/protonvpn.desktop"
 chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/protonvpn.desktop"
 
-# Login-Keyring des Desktop-Users vorab mit dem RDP-Passwort anlegen,
-# damit beim ersten App-Start KEIN "Unlock login keyring"-Dialog erscheint
-# und PAM ihn beim Desktop-Login automatisch entschlüsselt.
-# WICHTIG: Ein bereits vorhandener Keyring (z. B. von einem früheren Login
-# mit anderem Passwort angelegt) wird BEISEITE GESCHOBEN und neu erstellt –
-# sonst stimmt die Verschlüsselung nicht und der Dialog kommt immer wieder.
-msg "Login-Keyring für $RDP_USER anlegen (erzwungen)"
+# Login-Keyring des Desktop-Users PASSWORTLOS anlegen: Proton speichert die
+# Sitzung im Keyring, und ein passwortloser Keyring bedeutet NIE einen
+# "Authentication required"-Dialog – weder beim App-Start noch nach Reboots
+# (xrdp gibt das Login-Passwort nicht zuverlässig an PAM weiter, deshalb ist
+# ein passwortgeschlüsselter Keyring hier die zickende Variante).
+# Sicherheitshinweis: die Proton-Sitzung liegt damit unverschlüsselt im
+# Container – akzeptabel für eine isolierte Download-Box.
+msg "Login-Keyring für $RDP_USER anlegen (passwortlos)"
 KEYRING_DIR="/home/$RDP_USER/.local/share/keyrings"
-if [[ -f "$KEYRING_DIR/login.keyring" ]]; then
-  mv "$KEYRING_DIR/login.keyring" \
-     "$KEYRING_DIR/login.keyring.$(date +%s).bak" 2>/dev/null || true
-  rm -f "$KEYRING_DIR/user.keystore"
-  ok "Alten Login-Keyring gesichert und entfernt – wird neu erstellt"
-fi
-# shellcheck disable=SC2016  # $RDP_PASSWORD wird zur Laufzeit via env übergeben
-if runuser -u "$RDP_USER" -- env HOME="/home/$RDP_USER" RDP_PASSWORD="$RDP_PASSWORD" bash -c '
+rm -rf "$KEYRING_DIR"
+install -d -o "$RDP_USER" -g "$RDP_USER" -m 0700 "$KEYRING_DIR"
+# shellcheck disable=SC2016
+if runuser -u "$RDP_USER" -- env HOME="/home/$RDP_USER" bash -c '
       eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1 || exit 1
-      printf "%s" "$RDP_PASSWORD" | \
-        gnome-keyring-daemon --unlock --replace --components=secrets >/dev/null 2>&1
+      printf "\n" | gnome-keyring-daemon --unlock --replace \
+        --components=secrets >/dev/null 2>&1
       exit 0
 ' && [[ -f "$KEYRING_DIR/login.keyring" ]]; then
-  # "login" als Default-Keyring festlegen (liest die Proton-App).
   printf 'login\n' >"$KEYRING_DIR/default"
   chown -R "$RDP_USER:$RDP_USER" "$KEYRING_DIR"
-  ok "Login-Keyring mit RDP-Passwort angelegt"
+  ok "Passwortloser Login-Keyring angelegt (kein Dialog mehr)"
 else
-  warn "Keyring-Anlage fehlgeschlagen – falls beim ersten App-Start ein"
-  warn "Unlock-Dialog erscheint: einmalig das RDP-Passwort eingeben."
+  warn "Keyring-Anlage fehlgeschlagen – bei einem Unlock-Dialog: Enter genügt."
 fi
 
 # Tastatur-Layout für den RDP-Desktop setzen (Default: de). Ohne diesen
@@ -440,12 +435,19 @@ cat >/etc/xrdp/startwm.sh <<'EOF'
 # Start an XFCE session for xrdp users.
 unset DBUS_SESSION_BUS_ADDRESS
 unset XDG_RUNTIME_DIR
+# GTK4-Apps (Proton VPN) hängen ohne Renderer-Fallback unter xrdp ("lädt
+# ewig") – cairo statt GL erzwingen.
+export GSK_RENDERER=cairo
 if [ -r /etc/profile ]; then
   . /etc/profile
 fi
 exec startxfce4
 EOF
 chmod 0755 /etc/xrdp/startwm.sh
+
+# GTK4-Renderer-Fallback auch systemweit (greift in jeder Session).
+grep -q '^GSK_RENDERER=' /etc/environment 2>/dev/null \
+  || printf 'GSK_RENDERER=cairo\n' >>/etc/environment
 
 # Hängende Sitzungsprozesse von früheren Verbindungen aufräumen: nach einem
 # xrdp-Neustart blockieren Zombies sonst neue Verbindungen ("wird abgebrochen").

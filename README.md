@@ -137,15 +137,14 @@ Bei `xfreerdp` übernimmt `/dynamic-size` das automatisch.
 4. **Einstellungen (Zahnrad) → Killswitch → On** — fertig. Die Sitzung
    bleibt gespeichert, auch über Neustarts.
 
-> **„Unlock login keyring" / „Authentication required"?** Der Installer legt
-> den Login-Keyring des Desktop-Benutzers **vorab mit dem RDP-Passwort**
-> an — der Dialog sollte also nicht mehr erscheinen. Falls du den Dialog
-> trotzdem schon gesehen hast: Ein alter Keyring (mit anderem Passwort)
-> wurde bei einem **Update-Lauf ab Version 2026-11-26.9 automatisch
-> gesichert und mit dem aktuellen RDP-Passwort neu angelegt**. Warst du in
-> der Proton-App schon angemeldet, musst du dich danach **einmalig neu
-> anmelden**. Sollte der Dialog jemals wieder auftauchen (z. B. nach einem
-> RDP-Passwort-Wechsel): einmalig das **RDP-Passwort** eingeben — fertig.
+> **„Unlock login keyring" / „Authentication required"?** Ab Version
+> `2026-11-26.11` legt der Installer einen **passwortlosen** Login-Keyring
+> an — der Dialog erscheint nie wieder (verifiziert: der Keyring-Zugriff
+> funktioniert headless ohne jede Passwortabfrage). Hinweis: Die
+> Proton-Sitzung liegt damit unverschlüsselt im Container — akzeptabel
+> für eine isolierte Download-Box; wer mehr Sicherheit will, setzt in der
+> XFCE-Einstellung „Sitzungen und Start ⇒ Dienste" ein Keyring-Passwort
+> und trägt es beim ersten Dialog ein.
 
 ### Tastatur im RDP-Desktop
 
