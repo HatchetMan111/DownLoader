@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.5"
+SCRIPT_VERSION="2026-11-26.6"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -260,6 +260,13 @@ if ! gpgv --keyring "$KEYRING" /tmp/proton-InRelease 2>/tmp/proton-gpgv.err; the
 fi
 rm -f /tmp/proton-InRelease /tmp/proton-gpgv.err
 ok "Keyring verifiziert (gpgv): $KEYRING"
+
+# Repo eintragen und Paketindex laden – ohne diesen Schritt kennt apt die
+# Proton-Pakete nicht ("Unable to locate package").
+cat >/etc/apt/sources.list.d/protonvpn-stable.list <<EOF
+deb [signed-by=${KEYRING}] https://repo.protonvpn.com/debian stable main
+EOF
+apt_update
 
 # --------------------------------------------------------------------------- #
 # 3. desktop + Proton VPN app
