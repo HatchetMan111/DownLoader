@@ -1,0 +1,33 @@
+[Unit]
+Description=Proton Download Box (FastAPI + React web UI)
+Documentation=https://github.com/HatchetMan111/DownLoader
+After=network-online.target NetworkManager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=protonbox
+Group=protonbox
+EnvironmentFile=/etc/proton-download-box.env
+WorkingDirectory=/opt/proton-download-box
+ExecStart=/opt/proton-download-box/venv/bin/python /opt/proton-download-box/backend/main.py
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+
+# --- hardening ------------------------------------------------------------
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/srv/downloads /var/lib/proton-download-box
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# --- logging --------------------------------------------------------------
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=proton-download-box
+
+[Install]
+WantedBy=multi-user.target

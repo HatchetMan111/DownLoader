@@ -1,0 +1,18 @@
+# Node
+app/frontend/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Test- und Build-Artefakte
+*.log
+/payload.tar.gz
+/test/tmp/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
