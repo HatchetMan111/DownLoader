@@ -86,11 +86,28 @@ if [[ "$SIGNED_IN" != true ]]; then
   fi
 fi
 
-printf '\n=== Killswitch aktivieren\n'
-protonvpn config set kill-switch standard || printf 'Hinweis: Killswitch konnte nicht gesetzt werden.\n'
-
 printf '\n=== Verbinden (schnellster Free-Server)\n'
-if ! protonvpn connect; then
+CONNECTED=false
+if protonvpn connect; then
+  CONNECTED=true
+else
+  printf '\nErster Versuch fehlgeschlagen – Killswitch temporär aus, neuer Versuch …\n'
+  protonvpn config set kill-switch off >/dev/null 2>&1 || true
+  sleep 2
+  protonvpn connect && CONNECTED=true
+fi
+
+# NetworkManager hat keine aktive Verbindung? Dann eth0 übernehmen und erneut.
+if [[ "$CONNECTED" != true ]] && [[ -x /usr/local/bin/pdb-nm-takeover ]]; then
+  printf '\nNM verwaltet eth0 nicht – versuche Übernahme (mit Rollback) …\n'
+  if /usr/local/bin/pdb-nm-takeover; then
+    sleep 2
+    printf 'Neuer Verbindungsversuch …\n'
+    protonvpn connect && CONNECTED=true
+  fi
+fi
+
+if [[ "$CONNECTED" != true ]]; then
   printf '\n--- Verbindung fehlgeschlagen: Diagnose ---\n'
   printf 'TUN-Gerät: '
   if [[ -c /dev/net/tun ]]; then
@@ -99,8 +116,10 @@ if ! protonvpn connect; then
     printf 'FEHLT (/dev/net/tun) – im LXC durchreichen\n'
   fi
   printf 'NetworkManager: %s\n' "$(systemctl is-active NetworkManager 2>&1 | head -n1)"
-  printf 'Aktive Verbindungen:\n'
-  nmcli -t -f NAME,TYPE connection show --active 2>&1 | head -n 5 | sed 's/^/  /'
+  printf 'Von NM verwaltete Verbindungen:\n'
+  nmcli -t -f NAME,TYPE,DEVICE connection show 2>&1 | head -n 8 | sed 's/^/  /'
+  printf 'Netzwerk-Interfaces:\n'
+  ip -brief addr 2>&1 | sed 's/^/  /'
   printf '\nVerbose-Ausgabe:\n'
   protonvpn --verbose connect 2>&1 | tail -n 25 | sed 's/^/  /'
 
@@ -114,10 +133,15 @@ if ! protonvpn connect; then
     tail -n 12 "$f" 2>/dev/null | sed 's/^/  /'
   done
   shopt -u nullglob
+fi
 
-  printf '\nNächster Schritt: obige Diagnose prüfen. Häufig hilft:\n'
-  printf '  pct exec <CT-ID> -- systemctl restart proton-vpn-daemon NetworkManager\n'
-  printf '  (danach dieses Skript erneut starten)\n'
+printf '\n=== Killswitch aktivieren\n'
+if [[ "$CONNECTED" == true ]]; then
+  protonvpn config set kill-switch standard \
+    || printf 'Hinweis: Killswitch konnte nicht gesetzt werden.\n'
+else
+  printf 'übersprungen (keine Verbindung) – nach erfolgreichem Verbinden nachholen:\n'
+  printf "  protonvpn config set kill-switch standard\n"
 fi
 
 printf '\n=== LAN freischalten\n'

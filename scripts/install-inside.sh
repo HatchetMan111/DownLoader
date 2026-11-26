@@ -522,6 +522,8 @@ msg "Terminal-Setup-Skript installieren"
 # Setup-Skript aus der Payload übernehmen (eigenständig versioniert).
 install -m 0755 "$PAYLOAD_DIR/scripts/pdb-proton-setup.sh" \
   /usr/local/bin/pdb-proton-setup
+install -m 0755 "$PAYLOAD_DIR/scripts/pdb-nm-takeover.sh" \
+  /usr/local/bin/pdb-nm-takeover
 
 cat >/usr/local/bin/pdb-proton-connect <<'EOF'
 #!/usr/bin/env bash
