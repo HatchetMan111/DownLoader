@@ -246,6 +246,39 @@ else
   pass "Tarball enthält kein node_modules"
 fi
 
+# --- 7. ensure_template liefert NUR den Pfad auf stdout (Regression) ---------
+printf '%s==>%s Command-Substitution: Template-Pfad\n' "$B" "$N"
+result=$(
+  export PATH="$STUB:$PATH"
+  export TEMPLATE_STORAGE="local"
+  msg()  { printf 'MSG: %s\n' "$*" >&2; }
+  ok()   { printf 'OK: %s\n' "$*" >&2; }
+  die()  { printf 'DIE: %s\n' "$*" >&2; exit 1; }
+  # shellcheck disable=SC1090
+  source <(sed -n '/^ensure_template()/,/^}/p' "$ROOT/install/proton-download-box.sh")
+  ensure_template
+) && rc=0 || rc=$?
+expected="local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
+if [[ $rc -eq 0 && "$result" == "$expected" ]]; then
+  pass "ensure_template gibt nur den Pfad aus (Regression: stdout-Kontamination)"
+else
+  fail "ensure_template-Ausgabe: '$result' (rc=$rc)"
+fi
+
+# --- 8. pick_storage mit explizitem Storage ----------------------------------
+result=$(
+  export PATH="$STUB:$PATH"
+  die() { printf 'DIE: %s\n' "$*" >&2; exit 1; }
+  # shellcheck disable=SC1090
+  source <(sed -n '/^pick_storage()/,/^}/p' "$ROOT/install/proton-download-box.sh")
+  pick_storage rootdir local
+) && rc=0 || rc=$?
+if [[ $rc -eq 0 && "$result" == "local" ]]; then
+  pass "pick_storage liefert gewählten Storage"
+else
+  fail "pick_storage: '$result' (rc=$rc)"
+fi
+
 printf '\n'
 if [[ $FAILS -eq 0 ]]; then
   printf '%sINSTALLER TEST PASSED%s\n' "$G" "$N"

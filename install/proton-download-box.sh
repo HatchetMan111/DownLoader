@@ -271,12 +271,14 @@ ensure_template() {
     | awk '/debian-12-standard/ { print $2 }' | sort -V | tail -n1)
   [[ -n "$template" ]] || die "Kein debian-12-standard Template gefunden. Bitte 'pveam update' ausführen."
 
+  # Wichtig: alle Meldungen nach stderr – stdout muss exakt den Template-Pfad
+  # liefern, da diese Funktion per Command-Substitution ausgewertet wird.
   if ! pveam list "$TEMPLATE_STORAGE" 2>/dev/null | awk '{ print $1 }' \
       | grep -qx "${TEMPLATE_STORAGE}:vztmpl/${template}"; then
-    msg "LXC-Template herunterladen: $template → $TEMPLATE_STORAGE"
-    pveam download "$TEMPLATE_STORAGE" "$template"
+    msg "LXC-Template herunterladen: $template → $TEMPLATE_STORAGE" >&2
+    pveam download "$TEMPLATE_STORAGE" "$template" >&2
   else
-    ok "Template bereits vorhanden: $template"
+    ok "Template bereits vorhanden: $template" >&2
   fi
 
   printf '%s\n' "${TEMPLATE_STORAGE}:vztmpl/${template}"
@@ -307,7 +309,7 @@ wait_for_network() {
 wait_for_dpkg() {
   pct exec "$CT_ID" -- bash -c '
     for i in {1..60}; do
-      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then exit 0; fi
+      if ! pgrep -f "apt-get|dpkg" >/dev/null 2>&1; then exit 0; fi
       sleep 2
     done
     exit 1

@@ -136,7 +136,7 @@ app/frontend/                       # React + Vite (Quellcode)
 app/frontend/dist/                  # gebaute UI (vom Installer genutzt)
 test/lint.sh                        # statische Prüfungen
 test/smoke.sh                       # API-Smoke-Test ohne Proxmox (33 Checks)
-test/installer.sh                   # Installer-Logik mit pct/pvesm-Stubs (20 Checks)
+test/installer.sh                   # Installer-Logik mit pct/pvesm-Stubs (23 Checks)
 test/pve-reboot-test.sh             # Install → Reboot → UI erreichbar (auf dem Host)
 docs/TROUBLESHOOTING.md             # Fehlerdiagnose
 ```
@@ -185,7 +185,7 @@ ERGEBNIS: Installation → Reboot → Web UI erreichbar: OK
 
 > **Hinweis zur Verifikation:** Backend, API, Frontend-Build und
 > Installer-Logik sind hier vollständig getestet (33 API-Checks,
-> 24 Installer-Checks – alle grün). Den LXC-End-to-End-Lauf auf einem echten
+> 23 Installer-Checks – alle grün). Den LXC-End-to-End-Lauf auf einem echten
 > Proxmox-Host (inkl. Reboot) liefert `test/pve-reboot-test.sh` – dafür wird
 > ein Proxmox-Host benötigt.
 

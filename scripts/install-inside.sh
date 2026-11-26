@@ -92,7 +92,11 @@ gen_password() {
 
 apt_update() {
   msg "apt-Quellen aktualisieren"
-  apt-get update -qq
+  if ! apt-get update -qq; then
+    warn "apt-get update fehlgeschlagen – wiederhole mit vollem Output:"
+    apt-get update 2>&1 | tail -n 40 || true
+    die "apt-get update fehlgeschlagen (Details oben)"
+  fi
 }
 
 apt_install() {
@@ -183,14 +187,36 @@ apt_install \
 
 msg "Proton-VPN-Repository einrichten"
 install -d -m 0755 /usr/share/keyrings
-if [[ ! -s /usr/share/keyrings/protonvpn-public.asc ]]; then
-  curl -fsSL --retry 3 --retry-delay 2 \
-    https://repo.protonvpn.com/debian/public_key.asc -o /tmp/proton-public.asc
-  gpg --dearmor < /tmp/proton-public.asc > /usr/share/keyrings/protonvpn-public.asc
+
+KEYRING_URL="https://repo.protonvpn.com/debian/public_key.asc"
+KEYRING="/usr/share/keyrings/protonvpn-stable-archive-keyring.gpg"
+# Legacy-Datei aus früheren Versionen (binärer Keyring mit .asc-Endung) entfernen
+rm -f /usr/share/keyrings/protonvpn-public.asc
+
+if [[ ! -s "$KEYRING" ]]; then
+  curl -fsSL --retry 3 --retry-delay 2 "$KEYRING_URL" -o /tmp/proton-public.asc \
+    || die "Proton-Schlüssel konnte nicht geladen werden: $KEYRING_URL"
+  gpg --dearmor < /tmp/proton-public.asc > "$KEYRING"
   rm -f /tmp/proton-public.asc
+  [[ -s "$KEYRING" ]] || die "Keyring nach gpg --dearmor leer – Abbruch."
+  chmod 0644 "$KEYRING"
 fi
-cat >/etc/apt/sources.list.d/protonvpn-stable.list <<'EOF'
-deb [signed-by=/usr/share/keyrings/protonvpn-public.asc] https://repo.protonvpn.com/debian stable main
+
+# Fail fast mit klarer Meldung statt generischem apt-GPG-Fehler:
+# Signatur des InRelease-Files mit gpgv gegen unseren Keyring prüfen.
+curl -fsSL --retry 3 --retry-delay 2 \
+  https://repo.protonvpn.com/debian/dists/stable/InRelease -o /tmp/proton-InRelease \
+  || die "InRelease konnte nicht geladen werden"
+if ! gpgv --keyring "$KEYRING" /tmp/proton-InRelease 2>/tmp/proton-gpgv.err; then
+  cat /tmp/proton-gpgv.err >&2 || true
+  rm -f "$KEYRING" /tmp/proton-InRelease
+  die "Keyring ungültig – Signaturen nicht prüfbar ($KEYRING). Erneut ausführen."
+fi
+rm -f /tmp/proton-InRelease /tmp/proton-gpgv.err
+ok "Keyring verifiziert (gpgv): $KEYRING"
+
+cat >/etc/apt/sources.list.d/protonvpn-stable.list <<EOF
+deb [signed-by=${KEYRING}] https://repo.protonvpn.com/debian stable main
 EOF
 apt_update
 
