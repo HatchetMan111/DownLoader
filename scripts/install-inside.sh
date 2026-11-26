@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.17"
+SCRIPT_VERSION="2026-11-26.18"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -519,45 +519,9 @@ ok "xrdp lauscht auf 3389"
 # --------------------------------------------------------------------------- #
 
 msg "Terminal-Setup-Skript installieren"
-cat >/usr/local/bin/pdb-proton-setup <<'EOF'
-#!/usr/bin/env bash
-# Proton VPN komplett per Terminal einrichten – kein Desktop, keine Dialoge.
-#   pct exec <CT-ID> -- bash /usr/local/bin/pdb-proton-setup
-set -euo pipefail
-RDP_USER="proton"
-if [[ $EUID -eq 0 ]]; then
-  exec runuser -u "$RDP_USER" -- bash /usr/local/bin/pdb-proton-setup
-fi
-unset XDG_RUNTIME_DIR
-eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1
-eval "$(printf "\n" | gnome-keyring-daemon --unlock --replace \
-  --components=secrets)" >/dev/null 2>&1
-
-printf '\n=== Proton VPN – Anmeldung (dein kostenloser Proton-Account)\n'
-read -rp 'Proton-Email: ' PUSER
-if [[ -z "${PUSER:-}" ]]; then
-  printf 'Keine Email eingegeben – Abbruch.\n'
-  exit 1
-fi
-# Passwort wird vom CLI selbst abgefragt (unsichtbare Eingabe).
-# Nutzt dein Account eine Authenticator-App:  protonvpn signin <email> --totp
-protonvpn signin "$PUSER"
-
-printf '\n=== Killswitch aktivieren\n'
-protonvpn config set kill-switch standard
-
-printf '\n=== Verbinden (schnellster Free-Server)\n'
-protonvpn connect
-
-printf '\n=== LAN freischalten (RDP/Samba bleiben erreichbar)\n'
-/usr/local/bin/pdb-lan-fix || true
-
-printf '\n=== Status\n'
-protonvpn status
-printf '\nFertig. Der Tunnel verbindet ab jetzt automatisch beim Boot,\n'
-printf 'RDP/Samba/Web-UI bleiben über das LAN erreichbar.\n'
-EOF
-chmod 0755 /usr/local/bin/pdb-proton-setup
+# Setup-Skript aus der Payload übernehmen (eigenständig versioniert).
+install -m 0755 "$PAYLOAD_DIR/scripts/pdb-proton-setup.sh" \
+  /usr/local/bin/pdb-proton-setup
 
 cat >/usr/local/bin/pdb-proton-connect <<'EOF'
 #!/usr/bin/env bash
