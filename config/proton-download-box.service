@@ -6,8 +6,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=protonbox
-Group=protonbox
+# LXC-safe: läuft als root im (unprivilegierten) Container – wie xrdp/NM/smbd
+# dort auch. Mount-namespace-Hardening (ProtectSystem/PrivateTmp) kann in
+# unprivilegierten LXC 203/EXEC verursachen und ist deshalb bewusst weggelassen;
+# die Isolation übernimmt der Container.
 EnvironmentFile=/etc/proton-download-box.env
 WorkingDirectory=/opt/proton-download-box
 ExecStart=/opt/proton-download-box/venv/bin/python /opt/proton-download-box/backend/main.py
@@ -15,16 +17,10 @@ Restart=always
 RestartSec=3
 TimeoutStopSec=15
 
-# --- hardening ------------------------------------------------------------
+# Sicher ohne Namespace-Mechanik: keine Privilegien-Eskalation aus dem Prozess.
 NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=full
-ProtectHome=yes
-ReadWritePaths=/srv/downloads /var/lib/proton-download-box
-RestrictSUIDSGID=yes
-LockPersonality=yes
+UMask=0022
 
-# --- logging --------------------------------------------------------------
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=proton-download-box
