@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.18"
+SCRIPT_VERSION="2026-11-27.19"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -770,10 +770,10 @@ EOF
   chown "$APP_USER:$APP_USER" "/srv/downloads/proton-download-box.rdp"
   ok "RDP-Profil (Windows) abgelegt: /srv/downloads/proton-download-box.rdp"
 
-  # Linux: Remmina-Profil – Client-Auflösung + maximiertes Fenster.
-  # resolution_mode=1 = "Client-Auflösung verwenden": der Remote-Desktop füllt
-  # das (maximierte) Remmina-Fenster. resolution_mode=2 = Server-Auflösung und
-  # liefert oft 800x600 → "Bildschirm zu klein". Deshalb 1 + maximiert.
+  # Linux: Remmina-Profil – Vollbild + Client-Auflösung.
+  # resolution_mode=1 = "Client-Auflösung verwenden" (Remote füllt die Fläche),
+  # window_fullscreen=1 = ganzer Monitor → groß, nichts abgeschnitten.
+  # (resolution_mode=2 = Server-Auflösung, oft 800x600 → zu klein.)
   cat >"/srv/downloads/proton-download-box.remmina" <<EOF
 [remmina]
 name=Proton Download Box
@@ -782,8 +782,8 @@ server=${BOX_IP}:3389
 username=${RDP_USER}
 domain=
 resolution_mode=1
-window_maximized=1
-window_fullscreen=0
+window_maximized=0
+window_fullscreen=1
 colordepth=32
 quality=9
 disableclipboard=0
