@@ -139,10 +139,13 @@ einstellen:
 **macOS („Windows App"):** PC hinzufügen → `<CT-IP>` → vor dem Verbinden
 unter „Anzeige" die Auflösung auf **„Monitor"** (Vollbild) stellen.
 
-**Manuell (xfreerdp, Linux-Terminal):**
+**Empfohlen (xfreerdp, Linux-Terminal) – Vollbild + deutsches Layout:**
 ```bash
-xfreerdp /v:<CT-IP> /u:proton /size:1920x1080 /f /clipboard
+xfreerdp /v:<CT-IP> /u:proton /kbd:German /size:1920x1080 /f /clipboard
 ```
+`/f` = Vollbild (1920×1080), `/kbd:German` = deutsche Tastatur (`@` = AltGr+Q).
+Das ist der verlässlichste Weg – Remmina übernimmt die Auflösung beim Import
+leider nicht immer sauber.
 
 > Die Profile erzwingen Vollbild bzw. Client-Auflösung. Erzwingt dein Client
 > trotzdem eine kleine Größe, maximiere das Fenster **bevor** du verbindest.
@@ -155,6 +158,14 @@ xfreerdp /v:<CT-IP> /u:proton /size:1920x1080 /f /clipboard
 > Proton-App erst 3 Sekunden nach dem Desktop, damit der Session-Start
 > nicht ins Stocken gerät.
 
+> **RDP bricht ab, sobald der Tunnel steht?** Dann routet der LAN-Fix den
+> Rückweg noch nicht. Auf dem Host nachziehen (PB-Subnetze + lokales Netz
+> werden über eth0 geführt, inkl. Cross-Subnet-Clients wie 192.168.x):
+> ```bash
+> pct exec <ID> -- bash /usr/local/bin/pdb-lan-fix
+> ```
+> Läuft ab v25 automatisch bei jedem Tunnel-Aufbau (Dispatcher).
+
 ### 2. Proton VPN einrichten (direkt nach dem Login offen)
 
 1. **Proton VPN** öffnet sich nach der Anmeldung automatisch
@@ -162,8 +173,11 @@ xfreerdp /v:<CT-IP> /u:proton /size:1920x1080 /f /clipboard
 2. **Sign in** → mit dem kostenlosen Proton-Account anmelden
    (evtl. 2FA-Code eingeben).
 3. **Connect** → der schnellste Free-Server verbindet sich.
-4. **Einstellungen (Zahnrad) → Killswitch → On** — fertig. Die Sitzung
-   bleibt gespeichert, auch über Neustarts.
+4. **Killswitch ist standardmäßig AUS** (hält RDP/Web/Samba erreichbar –
+   bei aktivem Tunnel blockt er sonst den LAN-Zugriff). Wer ihn trotzdem will:
+   `pct exec <ID> -- bash /usr/local/bin/pdb-killswitch on` (Achtung: danach
+   LAN nur noch per `pct exec`; mit `off` wieder aus). Die Sitzung bleibt
+   gespeichert, auch über Neustarts.
 
 > **„Unlock login keyring" / „Authentication required"?** Der Installer legt
 > den Login-Keyring **passwortlos** an (ab `2026-11-27.20`): ein leerer Keyring

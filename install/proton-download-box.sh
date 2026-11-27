@@ -24,7 +24,7 @@ APP_TITLE="Proton Download Box"
 APP_DESC="Proton VPN Free download box with desktop, file manager and web UI"
 # Muss zur SCRIPT_VERSION in scripts/install-inside.sh passen. Weicht die
 # geladene Payload ab, war der GitHub-Cache veraltet (wird laut gemeldet).
-EXPECTED_SCRIPT_VERSION="2026-11-27.25"
+EXPECTED_SCRIPT_VERSION="2026-11-27.26"
 PVE_ETC="${PVE_ETC:-/etc/pve}"
 
 # --- GitHub source -----------------------------------------------------------
@@ -710,16 +710,18 @@ printf '  Samba         : \\\\%s\\downloads  (Benutzer %s, gleiches Passwort)\n'
 printf '  Dateien       : /srv/downloads\n'
 printf '  Container-Shell: pct enter %s\n' "$CT_ID"
 printf '\n'
-printf '  Nächster Schritt:\n'
-printf '    1. RDP-Client-Profil laden (große Auflösung, kein "zu klein"):\n'
-printf '       Web UI → Dateien → proton-download-box.rdp (Windows) bzw.\n'
-printf '       .remmina (Linux) herunterladen und doppelklicken.\n'
-printf '       Windows: %s\\\\%s\\downloads\\proton-download-box.rdp\n' "$CT_IP" "$RDP_USER"
-printf '    2. Am Desktop: Benutzer %s, RDP-Passwort von oben.\n' "$RDP_USER"
-printf '       (Kein Keyring-Dialog – passwortlos; falls doch: ENTER.)\n'
-printf '    3. Proton VPN starten, mit dem kostenlosen Account anmelden,\n'
-printf '       Server verbinden, Killswitch aktivieren.\n'
-printf '    4. Downloads über die Web UI oder Samba abholen.\n'
+printf '  Verbinden (am einfachsten per xfreerdp, Vollbild + deutsches Layout):\n'
+printf '    xfreerdp /v:%s /u:%s /kbd:German /size:1920x1080 /f /clipboard\n' "$CT_IP" "$RDP_USER"
+printf '    → RDP-Passwort von oben. Kein Keyring-Dialog (passwortlos; falls doch: ENTER).\n'
+printf '    Alternativ: Remmina (Verbindung bearbeiten → Client-Auflösung + Vollbild)\n'
+printf '    oder das .rdp-Profil aus der Web-UI/Dateien (Windows).\n'
+printf '\n'
+printf '  Im Desktop: Proton-App öffnen → anmelden → Verbinden.\n'
+printf '    Killswitch ist standardmäßig AUS (hält RDP/Web/Samba erreichbar).\n'
+printf '    Wer ihn will:  pct exec %s -- bash /usr/local/bin/pdb-killswitch on\n' "$CT_ID"
+printf '    (Achtung: an → LAN-Zugriff nur noch per pct exec. Aus: ... off)\n'
+printf '\n'
+printf '  Danach: Downloads über Web UI %shttp://%s:%s%s oder Samba \\\\%s\\%s.\n' "$C_C" "$CT_IP" "$PORT" "$C_0" "$CT_IP" "downloads"
 printf '\n'
 printf '  Update:     Installer erneut mit --id %s ausführen\n' "$CT_ID"
 printf '  Deinstall:  ... | bash -s -- --uninstall --id %s\n' "$CT_ID"
