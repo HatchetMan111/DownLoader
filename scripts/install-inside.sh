@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.27"
+SCRIPT_VERSION="2026-11-27.28"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -432,6 +432,42 @@ Categories=Network;
 EOF
 chmod 0755 "/home/$RDP_USER/Desktop/protonvpn.desktop"
 chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/protonvpn.desktop"
+
+# Desktop-Icons für Dateimanager (Thunar) + Browser (Firefox), damit beides
+# direkt nach dem RDP-Login sichtbar ist.
+cat >"/home/$RDP_USER/Desktop/dateimanager.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Dateimanager
+Comment=Dateien verwalten (/srv/downloads)
+Exec=thunar /srv/downloads
+Terminal=false
+Categories=System;FileTools;
+EOF
+chmod 0755 "/home/$RDP_USER/Desktop/dateimanager.desktop"
+chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/dateimanager.desktop"
+
+cat >"/home/$RDP_USER/Desktop/firefox.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Firefox
+Comment=Web-Browser (für Downloads mit Anti-Bot, z. B. romsfun)
+Exec=firefox-esr
+Terminal=false
+Categories=Network;WebBrowser;
+EOF
+chmod 0755 "/home/$RDP_USER/Desktop/firefox.desktop"
+chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/firefox.desktop"
+
+# Firefox-/Browser-Downloads nach /srv/downloads umleiten: ~/Downloads wird ein
+# Symlink dorthin. So landen Browser-Downloads im selben Ordner wie Web-UI-
+# Downloads und Samba – sichtbar im Web-UI-Dateimanager und über Samba.
+if [[ -d "/home/$RDP_USER/Downloads" && ! -L "/home/$RDP_USER/Downloads" ]]; then
+  rm -rf "/home/$RDP_USER/Downloads"
+fi
+ln -sfn /srv/downloads "/home/$RDP_USER/Downloads"
+chown -h "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Downloads" 2>/dev/null || true
+ok "Browser-Downloads → /srv/downloads verlinkt (~/Downloads)"
 
 # Login-Keyring des Desktop-Users PASSWORTLOS anlegen.
 #
