@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.15"
+SCRIPT_VERSION="2026-11-27.16"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -956,16 +956,25 @@ if [[ -n "${PDB_PROTON_EMAIL:-}" && -n "${PDB_PROTON_PASSWORD:-}" ]]; then
   # Der Setup-Assistent läuft als Desktop-Benutzer; PDB_PROTON_* aus der
   # Install-Env werden durchgereicht und schalten ihn in den nicht-interaktiven
   # Modus (Passwort per stdin, keine Rückfragen).
+  #
+  # Die Ausgabe wird eingefangen: der headless-CLI-Login ist der einzige
+  # wacklige Teil (stdin/2FA/Captcha). Bei Erfolg eine kurze Bestätigung, bei
+  # Misserfolg NUR eine knappe Zeile – kein seitenlanger Python-Traceback, der
+  # die eigentliche (grüne) Installation verdeckt. Die GUI-App bleibt der
+  # verlässliche Login-Weg; die Box ist in beiden Fällen voll nutzbar.
+  proton_log="/var/log/proton-download-box-login.log"
   if runuser -u "$RDP_USER" -- env \
        HOME="/home/$RDP_USER" \
        PDB_PROTON_EMAIL="$PDB_PROTON_EMAIL" \
        PDB_PROTON_PASSWORD="$PDB_PROTON_PASSWORD" \
        PDB_PROTON_TOTP="${PDB_PROTON_TOTP:-0}" \
-       bash /usr/local/bin/pdb-proton-setup; then
+       bash /usr/local/bin/pdb-proton-setup >"$proton_log" 2>&1; then
     ok "Proton-Login + Verbindungsaufbau abgeschlossen"
   else
-    warn "Automatischer Proton-Login fehlgeschlagen – bitte später manuell:"
-    warn "  pct enter ${PDB_CT_ID:-<CT-ID>} → bash /usr/local/bin/pdb-proton-setup"
+    warn "Automatischer CLI-Login fehlgeschlagen (Credentials sind ok – der"
+    warn "  headless-CLI-Weg ist zickig). Login einmalig über die GUI-App:"
+    warn "  pct enter ${PDB_CT_ID:-<CT-ID>} → RDP/Proton-App, oder:"
+    warn "  pct exec ${PDB_CT_ID:-<CT-ID>} -- tail -n 20 $proton_log"
   fi
 fi
 
