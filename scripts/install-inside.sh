@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.4"
+SCRIPT_VERSION="2026-11-27.5"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -603,6 +603,20 @@ install -d -m 0755 /etc/NetworkManager/dispatcher.d
 # und die Sitzung bricht ab ("Verbindung wird wiederhergestellt").
 install -m 0755 "$PAYLOAD_DIR/scripts/pdb-lan-fix.sh" /usr/local/bin/pdb-lan-fix
 install -m 0755 "$PAYLOAD_DIR/scripts/pdb-fix-nm-auth.sh" /usr/local/bin/pdb-fix-nm-auth
+install -m 0755 "$PAYLOAD_DIR/scripts/pdb-keyring-session.sh" /usr/local/bin/pdb-keyring-session
+
+# Persistente Keyring-Session: Proton speichert VPN-Zugangsdaten im
+# SecretService. Ohne dauerhaft laufenden Keyring bricht der Aufbau ab.
+install -m 0644 "$PAYLOAD_DIR/config/pdb-keyring.service" \
+  /etc/systemd/system/pdb-keyring.service
+systemctl daemon-reload
+systemctl enable pdb-keyring >/dev/null 2>&1 || true
+systemctl restart pdb-keyring >/dev/null 2>&1 || true
+if systemctl is-active --quiet pdb-keyring; then
+  ok "Keyring-Session aktiv (SecretService für Proton verfügbar)"
+else
+  warn "Keyring-Session konnte nicht gestartet werden – Proton-Verbindung ggf. blockiert"
+fi
 
 # NetworkManager-Autorisierung direkt freischalten (Proton braucht das).
 install -d -m 0755 /etc/polkit-1/rules.d

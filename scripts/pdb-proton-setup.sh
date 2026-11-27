@@ -25,9 +25,16 @@ fi
 # --- Session-Umgebung (pct exec vererbt ein kaputtes XDG_RUNTIME_DIR) --------
 export HOME="${HOME:-/home/$RDP_USER}"
 unset XDG_RUNTIME_DIR
-eval "$(dbus-launch --sh-syntax 2>/dev/null)" >/dev/null 2>&1 || true
-printf '\n' | gnome-keyring-daemon --unlock --replace --components=secrets \
-  >/dev/null 2>&1 || true
+# Bevorzugt die persistente Keyring-Session des pdb-keyring-Dienstes –
+# nur so sieht Proton denselben SecretService wie beim Verbindungsaufbau.
+if [[ -r /run/pdb-keyring/env.sh ]]; then
+  # shellcheck disable=SC1091
+  . /run/pdb-keyring/env.sh
+else
+  eval "$(dbus-launch --sh-syntax 2>/dev/null)" >/dev/null 2>&1 || true
+  printf '\n' | gnome-keyring-daemon --unlock --replace --components=secrets \
+    >/dev/null 2>&1 || true
+fi
 
 # --- LAN-Route: RDP/Samba/Web-UI bleiben trotz Tunnel erreichbar -------------
 lan_fix() {

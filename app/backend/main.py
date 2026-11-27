@@ -277,9 +277,8 @@ BASELINE_FILE = Path("/var/lib/proton-download-box/baseline-ip.json")
 
 _PROTON_WRAPPER = (
     "unset XDG_RUNTIME_DIR; "
-    'eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1; '
-    "printf '\\n' | gnome-keyring-daemon --unlock --replace "
-    "--components=secrets >/dev/null 2>&1; "
+    "if [ -r /run/pdb-keyring/env.sh ]; then . /run/pdb-keyring/env.sh; "
+    'else eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1; fi; '
     "exec protonvpn "
 )
 
