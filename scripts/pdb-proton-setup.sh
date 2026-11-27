@@ -24,6 +24,9 @@ fi
 
 # --- Session-Umgebung (pct exec vererbt ein kaputtes XDG_RUNTIME_DIR) --------
 export HOME="${HOME:-/home/$RDP_USER}"
+# Vollständiges Logging: die CLI verschluckt Fehler an der Oberfläche,
+# die Ursache steht nur im Debug-Log.
+export PROTON_VPN_DEBUG=true
 unset XDG_RUNTIME_DIR
 # Bevorzugt die persistente Keyring-Session des pdb-keyring-Dienstes –
 # nur so sieht Proton denselben SecretService wie beim Verbindungsaufbau.
@@ -118,6 +121,14 @@ PY
 }
 
 CONNECTED=false
+
+# Killswitch VOR dem ersten Versuch ausschalten: Proton baut ihn als
+# Dummy-Interface auf und bricht den gesamten Verbindungsaufbau ab, wenn
+# dieser Schritt scheitert (im Container der Fall). Erst nach einer
+# erfolgreichen Verbindung wird er wieder aktiviert.
+printf '\n  Killswitch für den Aufbau deaktivieren …\n'
+protonvpn config set kill-switch off 2>&1 | sed 's/^/    /' || true
+
 for proto in openvpn-tcp openvpn-udp wireguard; do
   printf '\n  Protokoll: %s\n' "$proto"
   set_protocol "$proto"
@@ -183,9 +194,11 @@ if [[ "$CONNECTED" != true ]]; then
   printf '\nNM-Verbindungen (mit Status):\n'
   nmcli -f NAME,TYPE,STATE connection show 2>&1 | head -n 12 | sed 's/^/  /'
 
-  printf '\nNetworkManager-Journal (VPN-relevant):\n'
-  sudo -n journalctl -u NetworkManager --since "-10 min" --no-pager 2>&1 \
-    | grep -iE "vpn|openvpn|secret|fail|error|auth" | tail -n 25 | sed 's/^/  /'
+  printf '\nProton-Log: letzte Fehler\n'
+  grep -E "ERROR|Traceback|Exception" "$HOME"/.cache/Proton/VPN/logs/vpn-cli.log 2>/dev/null \
+    | tail -n 12 | sed 's/^/  /'
+  printf '\nProton-Log: letzte 15 Zeilen\n'
+  tail -n 15 "$HOME"/.cache/Proton/VPN/logs/vpn-cli.log 2>/dev/null | sed 's/^/  /'
 
   printf '\nPolkit-Regeln:\n'
   if grep -qs 'org.freedesktop.NetworkManager' /etc/polkit-1/rules.d/*.rules; then
