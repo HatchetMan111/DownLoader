@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.8"
+SCRIPT_VERSION="2026-11-27.9"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -30,6 +30,8 @@ RDP_PASSWORD="${PDB_RDP_PASSWORD:-}"
 SMB_USER="${PDB_SMB_USER:-$RDP_USER}"
 SMB_PASSWORD="${PDB_SMB_PASSWORD:-$RDP_PASSWORD}"
 KBD_LAYOUT="${PDB_KBD_LAYOUT:-de}"
+# 1 = VM (NetworkManager verwaltet eth0 selbst), 0 = LXC
+PDB_VM="${PDB_VM:-0}"
 
 LOG_FILE="/var/log/proton-download-box-install.log"
 APP_DIR="/opt/proton-download-box"
@@ -585,7 +587,14 @@ ok "Terminal-Setup: pct exec ${PDB_CT_ID:-<CT-ID>} -- bash /usr/local/bin/pdb-pr
 
 msg "NetworkManager konfigurieren"
 install -d -m 0755 /etc/NetworkManager/conf.d
-cat >/etc/NetworkManager/conf.d/99-proton-download-box.conf <<'EOF'
+if [[ "$PDB_VM" == "1" ]]; then
+  # VM: eth0 bleibt unter NetworkManager-Verwaltung (Proton braucht das).
+  cat >/etc/NetworkManager/conf.d/99-proton-download-box.conf <<'EOF'
+[main]
+plugins=keyfile
+EOF
+else
+  cat >/etc/NetworkManager/conf.d/99-proton-download-box.conf <<'EOF'
 [main]
 plugins=keyfile
 dns=none
@@ -593,6 +602,7 @@ dns=none
 [keyfile]
 unmanaged-devices=interface-name:eth0
 EOF
+fi
 
 # Keep DNS working: while the tunnel is up, use Proton's resolver.
 [[ -f /etc/resolv.conf.pdb-orig ]] || cp -f /etc/resolv.conf /etc/resolv.conf.pdb-orig
