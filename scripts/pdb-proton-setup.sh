@@ -89,12 +89,25 @@ case "${ans,,}" in
 esac
 
 printf '\nPasswort (Eingabe bleibt unsichtbar):\n'
+# protonvpn signin liest das Passwort per getpass direkt vom Terminal – unter
+# pct exec bleibt dabei das Echo AN (Passwort sichtbar). Echo rund um den
+# Aufruf hart abschalten; protonvpn bekommt es so unsichtbar. Danach sicher
+# wiederherstellen (auch bei Abbruch/Fehler).
+stty -echo 2>/dev/null || true
 # shellcheck disable=SC2086  # $TOTP soll bei leerer Variable verschwinden
-if ! protonvpn signin "$PUSER" $TOTP; then
+protonvpn signin "$PUSER" $TOTP
+signin_rc=$?
+stty echo 2>/dev/null || true
+if [[ $signin_rc -ne 0 ]]; then
   printf '\nAnmeldung nicht möglich – falls bereits angemeldet, Session erneuern …\n'
   protonvpn signout >/dev/null 2>&1 || true
+  printf 'Passwort erneut (unsichtbar):\n'
+  stty -echo 2>/dev/null || true
   # shellcheck disable=SC2086
-  if ! protonvpn signin "$PUSER" $TOTP; then
+  protonvpn signin "$PUSER" $TOTP
+  signin_rc=$?
+  stty echo 2>/dev/null || true
+  if [[ $signin_rc -ne 0 ]]; then
     printf '\nAnmeldung fehlgeschlagen. Prüfe Email/Passwort und versuche es erneut.\n'
     exit 1
   fi
