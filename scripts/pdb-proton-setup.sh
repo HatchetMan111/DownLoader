@@ -121,9 +121,12 @@ signin() {
   # $1 = Email, $2 = Passwort, $3 = --totp (optional, leer = weglassen)
   local email="$1" pw="$2" totp="${3:-}"
   if [[ $NONINTERACTIVE -eq 1 ]]; then
-    # Passwort per stdin (getpass-Fallback ohne TTY); --totp nur wenn gesetzt.
+    # protonvpn liest das Passwort per getpass direkt vom /dev/tty – eine Pipe
+    # auf stdin wird ignoriert und es BLOCKIERT am "Password:"-Prompt. setsid
+    # löst den Prozess vom kontrollierenden Terminal; ohne TTY fällt getpass auf
+    # stdin zurück und nimmt das gepipete Passwort. --totp nur wenn gesetzt.
     # shellcheck disable=SC2086
-    printf '%s\n' "$pw" | protonvpn signin "$email" $totp
+    printf '%s\n' "$pw" | setsid -w protonvpn signin "$email" $totp
   else
     printf '\nPasswort (Eingabe bleibt unsichtbar):\n'
     stty -echo 2>/dev/null || true
