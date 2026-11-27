@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.16"
+SCRIPT_VERSION="2026-11-27.17"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -771,6 +771,9 @@ EOF
   ok "RDP-Profil (Windows) abgelegt: /srv/downloads/proton-download-box.rdp"
 
   # Linux: Remmina-Profil – Client-Auflösung + maximiertes Fenster.
+  # resolution_mode=1 = "Client-Auflösung verwenden": der Remote-Desktop füllt
+  # das (maximierte) Remmina-Fenster. resolution_mode=2 = Server-Auflösung und
+  # liefert oft 800x600 → "Bildschirm zu klein". Deshalb 1 + maximiert.
   cat >"/srv/downloads/proton-download-box.remmina" <<EOF
 [remmina]
 name=Proton Download Box
@@ -778,7 +781,7 @@ protocol=RDP
 server=${BOX_IP}:3389
 username=${RDP_USER}
 domain=
-resolution_mode=2
+resolution_mode=1
 window_maximized=1
 window_fullscreen=0
 colordepth=32
@@ -1002,6 +1005,8 @@ printf ' Web UI      : http://%s:%s\n' "$CT_IP" "$PORT"
 printf ' Web-Passwort: %s\n' "$WEB_PASSWORD"
 printf ' RDP         : %s:3389  (Benutzer %s)\n' "$CT_IP" "$RDP_USER"
 printf ' RDP-Passwort: %s\n' "$RDP_PASSWORD"
+printf ' Keyring-PW  : %s  (= RDP-Passwort, falls ein "Unlock login\n' "$RDP_PASSWORD"
+printf '               keyring"-Dialog kommt)\n'
 printf ' Samba       : \\\\%s\\downloads  (Benutzer %s)\n' "$CT_IP" "$SMB_USER"
 printf ' Samba-Passw.: %s\n' "$SMB_PASSWORD"
 printf ' Dateien     : /srv/downloads\n'
