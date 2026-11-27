@@ -24,7 +24,7 @@ APP_TITLE="Proton Download Box"
 APP_DESC="Proton VPN Free download box with desktop, file manager and web UI"
 # Muss zur SCRIPT_VERSION in scripts/install-inside.sh passen. Weicht die
 # geladene Payload ab, war der GitHub-Cache veraltet (wird laut gemeldet).
-EXPECTED_SCRIPT_VERSION="2026-11-27.13"
+EXPECTED_SCRIPT_VERSION="2026-11-27.14"
 PVE_ETC="${PVE_ETC:-/etc/pve}"
 
 # --- GitHub source -----------------------------------------------------------
@@ -440,6 +440,33 @@ for secret in "$WEB_PASSWORD" "$RDP_PASSWORD"; do
   [[ "$secret" != *"'"* && "$secret" != *$'\n'* ]] \
     || die "Passwörter dürfen keine einfachen Anführungszeichen oder Zeilenumbrüche enthalten."
 done
+
+# --- interaktive Proton-Credentials ------------------------------------------
+# Wenn keine --proton-email/-password übergeben wurden und ein Terminal
+# verfügbar ist (nicht -y, nicht --dry-run), fragt der Installer die
+# Proton-Zugangsdaten direkt ab. So läuft der VPN-Login am Install-Ende
+# automatisch durch – ganz ohne RDP/Nacharbeit. TTY-Check: bei einer reinen
+# Pipe (wget | bash ohne -c) gibt es kein read → still überspringen.
+if [[ -z "$PROTON_EMAIL" && -z "$PROTON_PASSWORD" && $ASSUME_YES -eq 0 && -t 0 ]]; then
+  printf '\n%sProton-VPN (optional)%s – Zugangsdaten jetzt abfragen, dann\n' "$C_B" "$C_0"
+  printf 'meldet sich die Box beim Install automatisch an und verbindet sich.\n'
+  printf 'Leer lassen, um das später zu erledigen.\n\n'
+  read -rp '  Proton-Email (oder leer): ' _pemail || _pemail=""
+  if [[ -n "$_pemail" ]]; then
+    PROTON_EMAIL="$_pemail"
+    printf '  Proton-Passwort (unsichtbar): '
+    IFS= read -rsp '' PROTON_PASSWORD || PROTON_PASSWORD=""
+    printf '\n'
+    read -rp '  Login mit Authenticator-App/2FA? [j/N] ' _ptotp || _ptotp=""
+    case "${_ptotp,,}" in
+      j*) PROTON_TOTP=1 ;;
+    esac
+    ok "Proton-Credentials übernommen ($PROTON_EMAIL)"
+  fi
+fi
+
+# Passwort im Prozess-Listing/Log nicht unnötig lange vorhalten: die Env-Datei
+# wird gleich mit 0600 geschrieben und nach dem Lauf gelöscht (run_inside).
 
 # --------------------------------------------------------------------------- #
 # payload
