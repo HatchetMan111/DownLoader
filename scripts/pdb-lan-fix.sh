@@ -26,36 +26,36 @@ if [[ -z "$gw" ]]; then
   gw=$(printf '%s' "$ip4" | cut -d/ -f1 | awk -F. '{print $1"."$2"."$3".1"}')
 fi
 
-# Konkrete Route in der Haupttabelle (Vorrang vor dem Tunnel-Default).
-# NICHT fatal: schlägt sie fehl (z. B. weil die Kernel-Link-Route das LAN schon
-# korrekt führt), ist das LAN trotzdem über die Haupttabelle erreichbar – die
-# Policy-Rule unten ist der eigentliche Hebel. Früher killte exit 1 hier die
-# gesamte Funktion, BEVOR die Rule gesetzt wurde → LAN blieb tot.
-ip route replace "$lan" via "$gw" dev eth0 2>/dev/null \
-  || echo "Hinweis: Route $lan nicht explizit gesetzt (Kernel-Link-Route genügt)."
+# Zu routende Netze: das lokale Subnetz + alle privaten RFC1918-Ranges. So
+# erreicht JEDES LAN-Gerät (auch ein Client in 192.168.x / 172.16.x, während die
+# Box in 10.x liegt) die Box über eth0 – der Tunnel schluckt sonst den Rückweg.
+# onlink erzwingt den Gateway auch ohne passende Link-Route (verhindert den
+# "Nexthop has invalid gateway"-Fehler bei aktiver Tunnel-Default-Route).
+ranges=("$lan" "192.168.0.0/16" "172.16.0.0/12")
 
-# Policy-Regel: LAN-Ziele immer über die Haupttabelle (Haupthebel gegen den
-# Tunnel-Default). Priorität 100 – niedriger als die Tunnel-Regeln, greift zuerst.
-ip rule del to "$lan" lookup main priority 100 2>/dev/null || true
-ip rule add to "$lan" lookup main priority 100 2>/dev/null || \
-  echo "Hinweis: ip rule $lan konnte nicht gesetzt werden."
+for net in "${ranges[@]}"; do
+  # Route in der Haupttabelle (nicht fatal – die Policy-Rule ist der Hebel).
+  ip route replace "$net" via "$gw" dev eth0 onlink 2>/dev/null \
+    || ip route replace "$net" via "$gw" dev eth0 2>/dev/null \
+    || echo "Hinweis: Route $net nicht explizit gesetzt."
 
-# Der Proton-Killswitch legt zusätzlich Firewall-Regeln an, die ALLES außer dem
-# Tunnel verwirft – damit bricht RDP/Samba trotz korrekter Route ab. Deshalb
-# LAN-Verkehr in der Firewall (nft + iptables) VOR dem Drop erlauben. Idempotent.
-# nft: eigene Basis-Tabelle, Kette mit frühem Accept fürs LAN.
-if command -v nft >/dev/null 2>&1; then
-  nft add table inet pdb_lan 2>/dev/null || true
-  nft 'add chain inet pdb_lan input { type filter hook input priority -300; policy accept; }' 2>/dev/null || true
-  nft add rule inet pdb_lan input ip saddr "$lan" accept 2>/dev/null || true
-  nft add rule inet pdb_lan input ip daddr "$lan" accept 2>/dev/null || true
-fi
-# iptables (falls der Killswitch über iptables-nft arbeitet): LAN vor anderen
-# Regeln erlauben. -C prüft Existenz, -I fügt oben ein.
-if command -v iptables >/dev/null 2>&1; then
-  iptables -C INPUT -s "$lan" -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -s "$lan" -j ACCEPT 2>/dev/null || true
-  iptables -C INPUT -d "$lan" -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -d "$lan" -j ACCEPT 2>/dev/null || true
-  iptables -C OUTPUT -d "$lan" -j ACCEPT 2>/dev/null || iptables -I OUTPUT 1 -d "$lan" -j ACCEPT 2>/dev/null || true
-fi
+  # Policy-Regel: Ziele immer über die Haupttabelle (greift vor den Tunnel-Regeln).
+  ip rule del to "$net" lookup main priority 100 2>/dev/null || true
+  ip rule add to "$net" lookup main priority 100 2>/dev/null \
+    || echo "Hinweis: ip rule $net konnte nicht gesetzt werden."
 
-printf 'LAN %s -> %s über eth0 freigeschaltet (Route + Firewall)\n' "$lan" "$gw"
+  # Firewall (nft + iptables): LAN-Verkehr VOR dem Drop erlauben. Idempotent.
+  if command -v nft >/dev/null 2>&1; then
+    nft add table inet pdb_lan 2>/dev/null || true
+    nft 'add chain inet pdb_lan input { type filter hook input priority -300; policy accept; }' 2>/dev/null || true
+    nft add rule inet pdb_lan input ip saddr "$net" accept 2>/dev/null || true
+    nft add rule inet pdb_lan input ip daddr "$net" accept 2>/dev/null || true
+  fi
+  if command -v iptables >/dev/null 2>&1; then
+    iptables -C INPUT -s "$net" -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -s "$net" -j ACCEPT 2>/dev/null || true
+    iptables -C INPUT -d "$net" -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -d "$net" -j ACCEPT 2>/dev/null || true
+    iptables -C OUTPUT -d "$net" -j ACCEPT 2>/dev/null || iptables -I OUTPUT 1 -d "$net" -j ACCEPT 2>/dev/null || true
+  fi
+done
+
+printf 'LAN freigeschaltet über eth0 (gw %s): %s\n' "$gw" "${ranges[*]}"
