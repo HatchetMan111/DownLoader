@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.2"
+SCRIPT_VERSION="2026-11-27.3"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -527,7 +527,7 @@ install -m 0755 "$PAYLOAD_DIR/scripts/pdb-nm-takeover.sh" \
 
 # Erlaubt dem Desktop-Benutzer den NM-Übernahme-Helfer ohne Passwort
 # (wird vom Setup-Skript benötigt, das als proton läuft).
-printf 'proton ALL=(root) NOPASSWD: /usr/local/bin/pdb-nm-takeover, /usr/local/bin/pdb-lan-fix, /usr/local/bin/pdb-fix-nm-auth\n' \
+printf 'proton ALL=(root) NOPASSWD: /usr/local/bin/pdb-nm-takeover, /usr/local/bin/pdb-lan-fix, /usr/local/bin/pdb-fix-nm-auth, /usr/bin/journalctl, /usr/bin/nmcli\n' \
   >/etc/sudoers.d/pdb-nm-takeover
 chmod 0440 /etc/sudoers.d/pdb-nm-takeover
 

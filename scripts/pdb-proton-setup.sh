@@ -164,9 +164,21 @@ if [[ "$CONNECTED" != true ]]; then
   printf '\nVerbose-Ausgabe:\n'
   protonvpn --verbose connect 2>&1 | tail -n 25 | sed 's/^/  /'
 
-  printf '\nNetworkManager-Journal (letzte 30 Zeilen):\n'
-  sudo -n journalctl -u NetworkManager -n 30 --no-pager 2>/dev/null \
-    | tail -n 30 | sed 's/^/  /'
+  printf '\nOpenVPN-Plugin:\n'
+  found_plugin=false
+  for f in /usr/lib/NetworkManager/*vpn* /usr/lib/*/NetworkManager/*vpn*; do
+    [[ -e "$f" ]] || continue
+    printf '  %s\n' "${f##*/}"
+    found_plugin=true
+  done
+  [[ "$found_plugin" == true ]] || printf '  FEHLT\n'
+
+  printf '\nNM-Verbindungen (mit Status):\n'
+  nmcli -f NAME,TYPE,STATE connection show 2>&1 | head -n 12 | sed 's/^/  /'
+
+  printf '\nNetworkManager-Journal (VPN-relevant):\n'
+  sudo -n journalctl -u NetworkManager --since "-10 min" --no-pager 2>&1 \
+    | grep -iE "vpn|openvpn|secret|fail|error|auth" | tail -n 25 | sed 's/^/  /'
 
   printf '\nPolkit-Regeln:\n'
   if grep -qs 'org.freedesktop.NetworkManager' /etc/polkit-1/rules.d/*.rules; then
