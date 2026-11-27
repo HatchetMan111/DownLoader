@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.26"
+SCRIPT_VERSION="2026-11-27.27"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -283,6 +283,10 @@ apt_install \
   wireguard-tools openvpn \
   polkitd \
   gnome-keyring libpam-gnome-keyring libsecret-tools
+
+# Echter Browser im Desktop (per RDP bedienbar) – für Seiten mit Anti-Bot/JS/
+# Cookies (z. B. romsfun), die der einfache Web-UI-Downloader nicht schafft.
+apt_install firefox-esr || warn "firefox-esr nicht verfügbar – Desktop ohne Browser"
 
 # xfce-polkit is optional (a polkit rule below covers NetworkManager anyway)
 apt_install xfce-polkit || warn "xfce-polkit nicht verfügbar – weiter ohne"
