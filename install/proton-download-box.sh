@@ -24,7 +24,7 @@ APP_TITLE="Proton Download Box"
 APP_DESC="Proton VPN Free download box with desktop, file manager and web UI"
 # Muss zur SCRIPT_VERSION in scripts/install-inside.sh passen. Weicht die
 # geladene Payload ab, war der GitHub-Cache veraltet (wird laut gemeldet).
-EXPECTED_SCRIPT_VERSION="2026-11-27.22"
+EXPECTED_SCRIPT_VERSION="2026-11-27.23"
 PVE_ETC="${PVE_ETC:-/etc/pve}"
 
 # --- GitHub source -----------------------------------------------------------
@@ -246,11 +246,8 @@ fi
 # --------------------------------------------------------------------------- #
 
 gen_pass() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -base64 24 | tr -d '/+=' | cut -c1-20
-  else
-    tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20
-  fi
+  # Einfaches, eindeutiges Passwort (keine 0/O/1/l/I) – lokaler Container.
+  tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom 2>/dev/null | head -c 12
 }
 
 id_in_use() {

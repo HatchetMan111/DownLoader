@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.22"
+SCRIPT_VERSION="2026-11-27.23"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -94,11 +94,10 @@ export LC_ALL=C LANG=C   # keine Locales im Slim-Template → Warnungen unterdr�
 APT_OPTS=(-y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 
 gen_password() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -base64 24 | tr -d '/+=' | cut -c1-20
-  else
-    tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20
-  fi
+  # Einfaches, eindeutiges Passwort (keine verwechselbaren 0/O/1/l/I) – die
+  # Box ist ein lokaler Container, kein Hochsicherheits-Server. 12 Zeichen aus
+  # einem klaren Alphabet (klein + Ziffern 2-9).
+  tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom 2>/dev/null | head -c 12
 }
 
 apt_update() {
