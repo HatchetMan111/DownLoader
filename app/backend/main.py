@@ -276,8 +276,13 @@ FREE_COUNTRIES = [
 BASELINE_FILE = Path("/var/lib/proton-download-box/baseline-ip.json")
 
 _PROTON_WRAPPER = (
-    "unset XDG_RUNTIME_DIR; "
+    "UID_NUM=$(id -u); "
+    'if [ -d "/run/user/$UID_NUM" ] && [ -w "/run/user/$UID_NUM" ]; then '
+    'export XDG_RUNTIME_DIR="/run/user/$UID_NUM"; '
+    "else export XDG_RUNTIME_DIR=\"$HOME/.cache/pdb-runtime\"; "
+    'mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null; chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null; fi; '
     "if [ -r /run/pdb-keyring/env.sh ]; then . /run/pdb-keyring/env.sh; "
+    'export XDG_RUNTIME_DIR; '
     'else eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1; fi; '
     "exec protonvpn "
 )

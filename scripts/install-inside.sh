@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.14"
+SCRIPT_VERSION="2026-11-27.15"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -595,7 +595,15 @@ RDP_USER="proton"
 if [[ $EUID -eq 0 ]]; then
   exec runuser -u "$RDP_USER" -- bash /usr/local/bin/pdb-proton-connect
 fi
-unset XDG_RUNTIME_DIR
+# Beschreibbares XDG_RUNTIME_DIR setzen (sonst "Permission denied /run/user/1000").
+UID_NUM="$(id -u)"
+if [[ -d "/run/user/$UID_NUM" && -w "/run/user/$UID_NUM" ]]; then
+  export XDG_RUNTIME_DIR="/run/user/$UID_NUM"
+else
+  export XDG_RUNTIME_DIR="$HOME/.cache/pdb-runtime"
+  mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+  chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+fi
 eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1
 # Keyring mit dem RDP-Passwort entsperren (Datei legt der Installer an).
 KEYRING_PW=""

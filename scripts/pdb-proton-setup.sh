@@ -27,12 +27,25 @@ export HOME="${HOME:-/home/$RDP_USER}"
 # Vollständiges Logging: die CLI verschluckt Fehler an der Oberfläche,
 # die Ursache steht nur im Debug-Log.
 export PROTON_VPN_DEBUG=true
-unset XDG_RUNTIME_DIR
+# protonvpn braucht ein BESCHREIBBARES XDG_RUNTIME_DIR (ableitbar aus
+# /run/user/<uid>). Im Container ohne logind existiert /run/user/1000 nicht,
+# und pct exec als root vererbt ein kaputtes /run/user/0 → "Permission denied
+# /run/user/1000". Deshalb ein dem User gehörendes Runtime-Verzeichnis setzen.
+UID_NUM="$(id -u)"
+if [[ -d "/run/user/$UID_NUM" && -w "/run/user/$UID_NUM" ]]; then
+  export XDG_RUNTIME_DIR="/run/user/$UID_NUM"
+else
+  export XDG_RUNTIME_DIR="$HOME/.cache/pdb-runtime"
+  mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+  chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+fi
 # Bevorzugt die persistente Keyring-Session des pdb-keyring-Dienstes –
 # nur so sieht Proton denselben SecretService wie beim Verbindungsaufbau.
 if [[ -r /run/pdb-keyring/env.sh ]]; then
   # shellcheck disable=SC1091
   . /run/pdb-keyring/env.sh
+  # env.sh darf XDG_RUNTIME_DIR nicht auf ein kaputtes Verzeichnis zurücksetzen.
+  export XDG_RUNTIME_DIR
 else
   eval "$(dbus-launch --sh-syntax 2>/dev/null)" >/dev/null 2>&1 || true
   # Keyring mit dem RDP-Passwort entsperren (Datei legt der Installer an).
