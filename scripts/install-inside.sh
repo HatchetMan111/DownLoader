@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.1"
+SCRIPT_VERSION="2026-11-27.2"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -527,7 +527,7 @@ install -m 0755 "$PAYLOAD_DIR/scripts/pdb-nm-takeover.sh" \
 
 # Erlaubt dem Desktop-Benutzer den NM-Übernahme-Helfer ohne Passwort
 # (wird vom Setup-Skript benötigt, das als proton läuft).
-printf 'proton ALL=(root) NOPASSWD: /usr/local/bin/pdb-nm-takeover, /usr/local/bin/pdb-lan-fix\n' \
+printf 'proton ALL=(root) NOPASSWD: /usr/local/bin/pdb-nm-takeover, /usr/local/bin/pdb-lan-fix, /usr/local/bin/pdb-fix-nm-auth\n' \
   >/etc/sudoers.d/pdb-nm-takeover
 chmod 0440 /etc/sudoers.d/pdb-nm-takeover
 
@@ -590,6 +590,11 @@ install -d -m 0755 /etc/NetworkManager/dispatcher.d
 # Pakete in den Tunnel – auch den Rückweg der RDP-Verbindung aus dem LAN –
 # und die Sitzung bricht ab ("Verbindung wird wiederhergestellt").
 install -m 0755 "$PAYLOAD_DIR/scripts/pdb-lan-fix.sh" /usr/local/bin/pdb-lan-fix
+install -m 0755 "$PAYLOAD_DIR/scripts/pdb-fix-nm-auth.sh" /usr/local/bin/pdb-fix-nm-auth
+
+# NetworkManager-Autorisierung direkt freischalten (Proton braucht das).
+install -d -m 0755 /etc/polkit-1/rules.d
+printf '[main]\nauth-polkit=false\n' >/etc/NetworkManager/conf.d/50-pdb-auth.conf
 
 cat >/etc/NetworkManager/dispatcher.d/50-proton-download-box <<'EOF'
 #!/usr/bin/env bash

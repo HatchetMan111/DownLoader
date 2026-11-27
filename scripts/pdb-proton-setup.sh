@@ -136,6 +136,18 @@ if [[ "$CONNECTED" != true ]] && [[ -x /usr/local/bin/pdb-nm-takeover ]]; then
   fi
 fi
 
+# Autorisierung freischalten (Polkit/NM) und erneut versuchen.
+if [[ "$CONNECTED" != true ]] && [[ -x /usr/local/bin/pdb-fix-nm-auth ]]; then
+  printf '\nAutorisierung prüfen/freischalten …\n'
+  if sudo -n /usr/local/bin/pdb-fix-nm-auth 2>/dev/null \
+     || /usr/local/bin/pdb-fix-nm-auth; then
+    sleep 3
+    set_protocol openvpn-tcp
+    printf 'Neuer Verbindungsversuch nach Freischaltung …\n'
+    protonvpn connect && CONNECTED=true
+  fi
+fi
+
 if [[ "$CONNECTED" != true ]]; then
   printf '\n--- Verbindung fehlgeschlagen: Diagnose ---\n'
   printf 'TUN-Gerät: '
