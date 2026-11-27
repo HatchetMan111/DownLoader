@@ -24,7 +24,7 @@ APP_TITLE="Proton Download Box"
 APP_DESC="Proton VPN Free download box with desktop, file manager and web UI"
 # Muss zur SCRIPT_VERSION in scripts/install-inside.sh passen. Weicht die
 # geladene Payload ab, war der GitHub-Cache veraltet (wird laut gemeldet).
-EXPECTED_SCRIPT_VERSION="2026-11-27.19"
+EXPECTED_SCRIPT_VERSION="2026-11-27.20"
 PVE_ETC="${PVE_ETC:-/etc/pve}"
 
 # --- GitHub source -----------------------------------------------------------
@@ -707,8 +707,8 @@ printf '  Web UI        : %shttp://%s:%s%s\n' "$C_C" "$CT_IP" "$PORT" "$C_0"
 printf '  Web-Passwort  : %s\n' "$WEB_PASSWORD"
 printf '  RDP-Desktop   : %s%s:3389%s  (Benutzer %s)\n' "$C_C" "$CT_IP" "$C_0" "$RDP_USER"
 printf '  RDP-Passwort  : %s\n' "$RDP_PASSWORD"
-printf '  Keyring-Passw.: %s  (= RDP-Passwort, falls ein\n' "$RDP_PASSWORD"
-printf '                  "Unlock login keyring"-Dialog kommt)\n'
+printf '  Keyring       : passwortlos – falls ein "Unlock login keyring"\n'
+printf '                  Dialog kommt: einfach ENTER (kein Passwort).\n'
 printf '  Samba         : \\\\%s\\downloads  (Benutzer %s, gleiches Passwort)\n' "$CT_IP" "$RDP_USER"
 printf '  Dateien       : /srv/downloads\n'
 printf '  Container-Shell: pct enter %s\n' "$CT_ID"
@@ -719,7 +719,7 @@ printf '       Web UI → Dateien → proton-download-box.rdp (Windows) bzw.\n'
 printf '       .remmina (Linux) herunterladen und doppelklicken.\n'
 printf '       Windows: %s\\\\%s\\downloads\\proton-download-box.rdp\n' "$CT_IP" "$RDP_USER"
 printf '    2. Am Desktop: Benutzer %s, RDP-Passwort von oben.\n' "$RDP_USER"
-printf '       (Kein Keyring-Dialog mehr – Keyring-Passwort = RDP-Passwort.)\n'
+printf '       (Kein Keyring-Dialog – passwortlos; falls doch: ENTER.)\n'
 printf '    3. Proton VPN starten, mit dem kostenlosen Account anmelden,\n'
 printf '       Server verbinden, Killswitch aktivieren.\n'
 printf '    4. Downloads über die Web UI oder Samba abholen.\n'

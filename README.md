@@ -166,13 +166,15 @@ xfreerdp /v:<CT-IP> /u:proton /size:1920x1080 /f /clipboard
    bleibt gespeichert, auch über Neustarts.
 
 > **„Unlock login keyring" / „Authentication required"?** Der Installer legt
-> den Login-Keyring mit **dem RDP-Passwort** an (ab Version `2026-11-27.10`).
-> `pam_gnome_keyring` entsperrt ihn beim RDP-Login automatisch mit genau
-> diesem Passwort – der Dialog erscheint **nie wieder**. (Vorher war der
-> Keyring passwortlos, während PAM das Login-Passwort übergab: es passte nie,
-> also kam der Dialog bei jedem Login.) Wichtig: das Keyring-Passwort ist an
-> das RDP-Passwort gekoppelt – ändert sich das RDP-Passwort, beim nächsten
-> `--id`-Lauf den Keyring neu anlegen lassen (macht der Installer automatisch).
+> den Login-Keyring **passwortlos** an (ab `2026-11-27.20`): ein leerer Keyring
+> wird vom gnome-keyring-daemon **immer sofort und ohne Rückfrage** entsperrt –
+> es gibt kein Passwort, das abgefragt werden könnte. Ein Autostart-Eintrag
+> entsperrt ihn zusätzlich beim Login. **Kein PAM-Hook** mehr (der frühere
+> `pam_gnome_keyring`-Ansatz mit RDP-Passwort scheiterte nach mehreren Re-Runs
+> an einem Alt-Keyring → Dialog + „Passwort falsch"). Falls doch je ein Dialog
+> erscheint: **einfach ENTER** drücken (leeres Passwort). Hinweis: die
+> Proton-Sitzung liegt damit unverschlüsselt im Container – akzeptabel für eine
+> isolierte Download-Box.
 
 ### Tastatur im RDP-Desktop
 

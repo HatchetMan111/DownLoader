@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.19"
+SCRIPT_VERSION="2026-11-27.20"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -401,6 +401,21 @@ Terminal=false
 Categories=Network;
 EOF
 
+# Passwortlosen Login-Keyring beim Session-Start entsperren (leeres Passwort).
+# Der gnome-keyring-daemon entsperrt einen leeren Keyring automatisch; dieser
+# Autostart stellt sicher, dass SecretService für Proton bereit ist – ganz
+# ohne Dialog, unabhängig vom PAM-Stack.
+cat >"/home/$RDP_USER/.config/autostart/pdb-keyring-unlock.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Keyring entsperren
+Comment=Passwortlosen Login-Keyring für Proton freischalten
+Exec=bash -c "printf '\n' | gnome-keyring-daemon --unlock --components=secrets"
+Terminal=false
+X-GNOME-Autostart-Delay=1
+EOF
+chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.config/autostart/pdb-keyring-unlock.desktop"
+
 # Desktop-Verknüpfung als sichtbarer Fallback (Icon doppelt anklicken).
 install -d -o "$RDP_USER" -g "$RDP_USER" -m 0755 "/home/$RDP_USER/Desktop"
 cat >"/home/$RDP_USER/Desktop/protonvpn.desktop" <<'EOF'
@@ -415,48 +430,46 @@ EOF
 chmod 0755 "/home/$RDP_USER/Desktop/protonvpn.desktop"
 chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/protonvpn.desktop"
 
-# Login-Keyring des Desktop-Users mit dem RDP-Login-Passwort anlegen.
+# Login-Keyring des Desktop-Users PASSWORTLOS anlegen.
 #
-# DAS ist der Kern-Fix gegen den "Authentication required / Unlock login
-# keyring"-Dialog: pam_gnome_keyring (Sektion 5) entsperrt den Keyring beim
-# RDP-Login mit genau dem Passwort, das der Benutzer eintippt. Stimmen
-# Keyring-Passwort und Login-Passwort überein, passiert das SILENT – nie ein
-# Dialog. Vorher war der Keyring passwortlos (leer), pam_gnome_keyring hat
-# aber das Login-Passwort übergeben → es passte NIE → Dialog bei JEDEM Login.
+# Bulletproof gegen den "Unlock login keyring / Authentication required"-Dialog:
+# ein Keyring mit LEEREM Passwort wird vom gnome-keyring-daemon IMMER sofort
+# und ohne jede Rückfrage entsperrt – es gibt schlicht kein Passwort, das
+# abgefragt werden könnte. Der frühere Ansatz (Keyring-Passwort = RDP-Passwort
+# + pam_gnome_keyring) scheiterte in der Praxis: nach mehreren Re-Runs blieb
+# ein Alt-Keyring mit anderem Passwort liegen → Dialog + "Passwort falsch".
 #
-# Der Desktop-Keyring ist damit an das RDP-Passwort gekoppelt (wie bei einem
-# normalen Linux-Desktop). Wichtig: ändert man das RDP-Passwort, muss der
-# Keyring neu angelegt werden – der Installer erledigt das beim nächsten
-# --id-Lauf automatisch (rm -rf weiter unten).
-msg "Login-Keyring für $RDP_USER anlegen (Passwort = RDP-Login)"
+# Sicherheits-Hinweis: die Proton-Sitzung liegt damit unverschlüsselt im
+# Container – akzeptabel für eine isolierte Download-Box. Kein PAM-Hook nötig
+# (siehe Sektion 5); der Autostart startet den Daemon mit leerem Passwort.
+msg "Login-Keyring für $RDP_USER anlegen (passwortlos, kein Dialog)"
 KEYRING_DIR="/home/$RDP_USER/.local/share/keyrings"
 rm -rf "$KEYRING_DIR"
 install -d -o "$RDP_USER" -g "$RDP_USER" -m 0700 "$KEYRING_DIR"
 # shellcheck disable=SC2016
-if runuser -u "$RDP_USER" -- env HOME="/home/$RDP_USER" RDP_PW="$RDP_PASSWORD" bash -c '
+if runuser -u "$RDP_USER" -- env HOME="/home/$RDP_USER" bash -c '
       # pct exec als root vererbt ein kaputtes XDG_RUNTIME_DIR (/run/user/0)
       # – ohne dieses unset startet dbus-launch nicht ("transient service
       # directory" Fehler) und die Keyring-Anlage schlägt STILL fehl.
       unset XDG_RUNTIME_DIR
       eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1 || exit 1
-      # Passwort per stdin an gnome-keyring-daemon übergeben – so wird der
-      # Login-Keyring mit dem RDP-Passwort verschlüsselt angelegt.
-      printf "%s\n" "$RDP_PW" | gnome-keyring-daemon --unlock --replace \
+      # Leeres Passwort per stdin → passwortloser Login-Keyring (immer entsperrt).
+      printf "\n" | gnome-keyring-daemon --unlock --replace \
         --components=secrets >/dev/null 2>&1
       exit 0
 ' && [[ -f "$KEYRING_DIR/login.keyring" ]]; then
   printf 'login\n' >"$KEYRING_DIR/default"
   chown -R "$RDP_USER:$RDP_USER" "$KEYRING_DIR"
-  # Passwort für die persistente Keyring-Session (pdb-keyring.service) und
-  # das Web-UI-Backend hinterlegen – nur für den Desktop-User lesbar.
+  # Leeres Passwort für die persistente Keyring-Session (pdb-keyring.service)
+  # und das Web-UI-Backend hinterlegen – nur für den Desktop-User lesbar.
   umask 077
-  printf '%s\n' "$RDP_PASSWORD" >"/home/$RDP_USER/.pdb-keyring-pass"
+  : >"/home/$RDP_USER/.pdb-keyring-pass"
   chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.pdb-keyring-pass"
   chmod 0600 "/home/$RDP_USER/.pdb-keyring-pass"
   umask 022
-  ok "Login-Keyring angelegt (Passwort = RDP-Login, kein Dialog mehr)"
+  ok "Passwortloser Login-Keyring angelegt (nie ein Dialog)"
 else
-  warn "Keyring-Anlage fehlgeschlagen – beim Unlock-Dialog das RDP-Passwort eingeben."
+  warn "Keyring-Anlage fehlgeschlagen – Keyring wird beim Login neu angelegt."
 fi
 
 # Tastatur-Layout für den RDP-Desktop setzen (Default: de). Ohne diesen
@@ -540,13 +553,13 @@ pkill -x Xorg >/dev/null 2>&1 || true
 pkill -u "$RDP_USER" -f 'xfce4-session' >/dev/null 2>&1 || true
 pkill -u "$RDP_USER" -f 'gnome-keyring-daemon' >/dev/null 2>&1 || true
 
-# Auto-unlock the GNOME keyring with the login password (Proton stores the
-# session there). "optional" means a missing module never blocks login.
-if [[ -f /etc/pam.d/xrdp-sesman ]] && ! grep -q 'pam_gnome_keyring' /etc/pam.d/xrdp-sesman; then
-  {
-    printf 'auth       optional     pam_gnome_keyring.so\n'
-    printf 'session    optional     pam_gnome_keyring.so auto_start\n'
-  } >>/etc/pam.d/xrdp-sesman
+# KEIN pam_gnome_keyring-Hook: der Login-Keyring ist passwortlos (leer) und
+# wird vom Daemon automatisch entsperrt. Würde PAM hier das Login-Passwort
+# übergeben, entstünde ein Mismatch mit dem leeren Keyring → genau der
+# "Authentication required"-Dialog, den es zu vermeiden gilt. Ein evtl. aus
+# Alt-Installationen vorhandener Hook wird entfernt.
+if [[ -f /etc/pam.d/xrdp-sesman ]] && grep -q 'pam_gnome_keyring' /etc/pam.d/xrdp-sesman; then
+  sed -i '/pam_gnome_keyring/d' /etc/pam.d/xrdp-sesman
 fi
 
 systemctl enable xrdp >/dev/null 2>&1
@@ -1005,8 +1018,8 @@ printf ' Web UI      : http://%s:%s\n' "$CT_IP" "$PORT"
 printf ' Web-Passwort: %s\n' "$WEB_PASSWORD"
 printf ' RDP         : %s:3389  (Benutzer %s)\n' "$CT_IP" "$RDP_USER"
 printf ' RDP-Passwort: %s\n' "$RDP_PASSWORD"
-printf ' Keyring-PW  : %s  (= RDP-Passwort, falls ein "Unlock login\n' "$RDP_PASSWORD"
-printf '               keyring"-Dialog kommt)\n'
+printf ' Keyring     : passwortlos – falls doch ein "Unlock login keyring"\n'
+printf '               Dialog kommt: einfach ENTER drücken (kein Passwort).\n'
 printf ' Samba       : \\\\%s\\downloads  (Benutzer %s)\n' "$CT_IP" "$SMB_USER"
 printf ' Samba-Passw.: %s\n' "$SMB_PASSWORD"
 printf ' Dateien     : /srv/downloads\n'
