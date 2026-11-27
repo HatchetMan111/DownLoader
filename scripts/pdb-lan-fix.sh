@@ -35,4 +35,22 @@ ip rule del to "$lan" lookup main priority 100 2>/dev/null || true
 ip rule add to "$lan" lookup main priority 100 2>/dev/null || {
   echo "ip rule konnte nicht gesetzt werden."; exit 1; }
 
-printf 'LAN %s -> %s über eth0 freigeschaltet\n' "$lan" "$gw"
+# Der Proton-Killswitch legt zusätzlich Firewall-Regeln an, die ALLES außer dem
+# Tunnel verwirft – damit bricht RDP/Samba trotz korrekter Route ab. Deshalb
+# LAN-Verkehr in der Firewall (nft + iptables) VOR dem Drop erlauben. Idempotent.
+# nft: eigene Basis-Tabelle, Kette mit frühem Accept fürs LAN.
+if command -v nft >/dev/null 2>&1; then
+  nft add table inet pdb_lan 2>/dev/null || true
+  nft 'add chain inet pdb_lan input { type filter hook input priority -300; policy accept; }' 2>/dev/null || true
+  nft add rule inet pdb_lan input ip saddr "$lan" accept 2>/dev/null || true
+  nft add rule inet pdb_lan input ip daddr "$lan" accept 2>/dev/null || true
+fi
+# iptables (falls der Killswitch über iptables-nft arbeitet): LAN vor anderen
+# Regeln erlauben. -C prüft Existenz, -I fügt oben ein.
+if command -v iptables >/dev/null 2>&1; then
+  iptables -C INPUT -s "$lan" -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -s "$lan" -j ACCEPT 2>/dev/null || true
+  iptables -C INPUT -d "$lan" -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -d "$lan" -j ACCEPT 2>/dev/null || true
+  iptables -C OUTPUT -d "$lan" -j ACCEPT 2>/dev/null || iptables -I OUTPUT 1 -d "$lan" -j ACCEPT 2>/dev/null || true
+fi
+
+printf 'LAN %s -> %s über eth0 freigeschaltet (Route + Firewall)\n' "$lan" "$gw"
