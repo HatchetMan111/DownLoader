@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.3"
+SCRIPT_VERSION="2026-11-27.4"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -290,7 +290,19 @@ msg "Proton VPN (kostenlose App) installieren"
 apt_install_full \
   proton-vpn-gnome-desktop \
   python3-proton-keyring-linux-secretservice \
-  proton-vpn-cli
+  proton-vpn-cli \
+  python3-proton-vpn-network-manager \
+  python3-proton-vpn-local-agent
+
+# Ohne das NM-Backend legt Proton keine VPN-Verbindung an (bricht nach dem
+# Killswitch-Dummy ab). Nachprüfen und laut scheitern, falls es fehlt.
+if ! dpkg-query -W -f='${Status}' python3-proton-vpn-network-manager 2>/dev/null \
+     | grep -q "install ok installed"; then
+  warn "python3-proton-vpn-network-manager fehlt – VPN-Verbindungen sind nicht möglich"
+  apt-get install "${APT_OPTS[@]}" python3-proton-vpn-network-manager \
+    || die "python3-proton-vpn-network-manager konnte nicht installiert werden"
+fi
+ok "Proton-NM-Backend vorhanden (python3-proton-vpn-network-manager)"
 
 if command -v protonvpn-app >/dev/null 2>&1 || [[ -x /usr/bin/protonvpn-app ]]; then
   ok "Proton VPN App installiert"
