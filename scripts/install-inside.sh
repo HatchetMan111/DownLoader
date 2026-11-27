@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.28"
+SCRIPT_VERSION="2026-11-27.29"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -288,6 +288,10 @@ apt_install \
 # Cookies (z. B. romsfun), die der einfache Web-UI-Downloader nicht schafft.
 apt_install firefox-esr || warn "firefox-esr nicht verfügbar – Desktop ohne Browser"
 
+# FileZilla (FTP/SFTP-Client) im Desktop für direkte Transfers (z. B. zu einer
+# Konsole oder einem anderen Server über FTP/SFTP).
+apt_install filezilla || warn "filezilla nicht verfügbar – Desktop ohne FTP-Client"
+
 # xfce-polkit is optional (a polkit rule below covers NetworkManager anyway)
 apt_install xfce-polkit || warn "xfce-polkit nicht verfügbar – weiter ohne"
 
@@ -458,6 +462,18 @@ Categories=Network;WebBrowser;
 EOF
 chmod 0755 "/home/$RDP_USER/Desktop/firefox.desktop"
 chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/firefox.desktop"
+
+cat >"/home/$RDP_USER/Desktop/filezilla.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=FileZilla
+Comment=FTP/SFTP-Client für direkte Transfers
+Exec=filezilla
+Terminal=false
+Categories=Network;FileTransfer;
+EOF
+chmod 0755 "/home/$RDP_USER/Desktop/filezilla.desktop"
+chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/filezilla.desktop"
 
 # Firefox-/Browser-Downloads nach /srv/downloads umleiten: ~/Downloads wird ein
 # Symlink dorthin. So landen Browser-Downloads im selben Ordner wie Web-UI-

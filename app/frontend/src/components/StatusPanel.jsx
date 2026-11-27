@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { bytes, duration } from "../format.js";
 import {
   HardDrive,
@@ -14,6 +15,37 @@ function ServiceChip({ label, active }) {
       <span className="dot" />
       {label}
     </span>
+  );
+}
+
+function CopyButton({ value }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const helper = document.createElement("textarea");
+        helper.value = value;
+        helper.style.position = "fixed";
+        helper.style.opacity = "0";
+        document.body.appendChild(helper);
+        helper.select();
+        document.execCommand("copy");
+        helper.remove();
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button type="button" className="btn btn-ghost" onClick={copy}>
+      {copied ? "Kopiert ✓" : "Kopieren"}
+    </button>
   );
 }
 
@@ -35,9 +67,43 @@ export default function StatusPanel({ status }) {
   const usedPercent =
     disk.total > 0 ? Math.min(100, Math.round((disk.used / disk.total) * 100)) : 0;
   const smbPath = `\\\\${status.ip}\\${status.samba?.share ?? "downloads"}`;
+  const rdpHost = status.rdp?.host ?? status.ip;
+  const rdpUser = status.rdp?.user ?? "proton";
+  const xfreerdpCmd = `xfreerdp /v:${rdpHost} /u:${rdpUser} /kbd:German /size:1920x1080 /f /clipboard`;
+  const sambaMount = `sudo mount -t cifs -o username=${rdpUser},vers=3.0 //${rdpHost}/${status.samba?.share ?? "downloads"} /mnt/downloads`;
 
   return (
     <>
+      <section className="card">
+        <div className="card-head">
+          <h2>Verbinden (RDP-Desktop)</h2>
+        </div>
+        <p className="muted small">
+          Auf deinem Linux-PC ausführen – öffnet den Desktop in Vollbild mit
+          deutschem Tastatur-Layout (Passwort: dein RDP-Passwort).
+        </p>
+        <div className="connect-row">
+          <code className="mono connect-cmd">{xfreerdpCmd}</code>
+          <CopyButton value={xfreerdpCmd} />
+        </div>
+        <p className="muted small">
+          Windows/macOS: das fertige <strong>proton-download-box.rdp</strong>{" "}
+          aus dem Tab „Dateien“ doppelklicken. Remmina: Verbindung bearbeiten →
+          „Client-Auflösung“ + Vollbild.
+        </p>
+        <details className="connect-details">
+          <summary>Samba unter Linux mounten</summary>
+          <div className="connect-row">
+            <code className="mono connect-cmd">{sambaMount}</code>
+            <CopyButton value={sambaMount} />
+          </div>
+          <p className="muted small">
+            Im Dateimanager geht auch <code>smb://{rdpHost}/downloads</code>{" "}
+            (Benutzer {rdpUser}).
+          </p>
+        </details>
+      </section>
+
       <section className="card">
         <div className="card-head">
           <h2>VPN-Tunnel</h2>
@@ -78,8 +144,9 @@ export default function StatusPanel({ status }) {
 
         {!vpn.connected && (
           <p className="hint">
-            Per RDP anmelden, Proton VPN starten und verbinden. Den Killswitch in
-            den Einstellungen der Proton-App aktivieren.
+            Per RDP anmelden, Proton VPN starten und verbinden. Killswitch ist
+            standardmäßig aus (hält RDP/Web/Samba erreichbar); an/aus geht per{" "}
+            <code>pdb-killswitch on</code> / <code>off</code>.
           </p>
         )}
       </section>
