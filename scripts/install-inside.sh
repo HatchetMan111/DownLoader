@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.21"
+SCRIPT_VERSION="2026-11-27.22"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -591,6 +591,8 @@ msg "Terminal-Setup-Skript installieren"
 # Setup-Skript aus der Payload übernehmen (eigenständig versioniert).
 install -m 0755 "$PAYLOAD_DIR/scripts/pdb-proton-setup.sh" \
   /usr/local/bin/pdb-proton-setup
+install -m 0755 "$PAYLOAD_DIR/scripts/pdb-killswitch.sh" \
+  /usr/local/bin/pdb-killswitch
 install -m 0755 "$PAYLOAD_DIR/scripts/pdb-nm-takeover.sh" \
   /usr/local/bin/pdb-nm-takeover
 

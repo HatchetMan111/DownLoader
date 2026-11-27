@@ -273,13 +273,20 @@ if [[ "$CONNECTED" != true ]]; then
   shopt -u nullglob
 fi
 
-printf '\n=== Killswitch aktivieren\n'
-if [[ "$CONNECTED" == true ]]; then
+printf '\n=== Killswitch\n'
+# Standard: Killswitch AUS. Grund: bei aktivem Tunnel blockiert er den gesamten
+# LAN-Verkehr → RDP/Remmina/Web/Samba sterben (Box nicht mehr erreichbar). Für
+# eine per RDP bediente Download-Box ist das der richtige Default. Wer ihn
+# trotzdem will (mehr Anonymität, aber LAN-Zugriff nur per pct exec), setzt
+# PDB_KILLSWITCH=1 oder schaltet ihn später mit pdb-killswitch on ein.
+if [[ "${PDB_KILLSWITCH:-0}" == "1" && "$CONNECTED" == true ]]; then
   protonvpn config set kill-switch standard \
     || printf 'Hinweis: Killswitch konnte nicht gesetzt werden.\n'
+  printf '  Killswitch AKTIV (LAN-Zugriff ggf. eingeschränkt – pdb-killswitch off zum Deaktivieren).\n'
 else
-  printf 'übersprungen (keine Verbindung) – nach erfolgreichem Verbinden nachholen:\n'
-  printf "  protonvpn config set kill-switch standard\n"
+  protonvpn config set kill-switch off >/dev/null 2>&1 || true
+  printf '  Killswitch AUS (Standard) – RDP/Remmina/Web/Samba bleiben erreichbar.\n'
+  printf '  Opt-in: pdb-killswitch on  (oder PDB_KILLSWITCH=1 beim Setup).\n'
 fi
 
 printf '\n=== LAN freischalten\n'
