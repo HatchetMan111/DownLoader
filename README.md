@@ -107,24 +107,35 @@ Anmeldung am Desktop: Benutzer `proton`, Passwort aus der
 Installationsausgabe (liegt auch im Container unter
 `/root/proton-download-box-credentials.txt`).
 
-### Desktop passt nicht auf den Bildschirm? → Fertiges Profil importieren
+### Desktop passt nicht auf den Bildschirm / ist zu klein? → Fertiges Profil importieren
 
-Der Installer legt eine **fertig konfigurierte Remmina-Datei** auf die Box
-(Client-Auflösung + maximiertes Fenster). Du musst nichts einstellen:
+Der Installer legt **fertig konfigurierte RDP-Client-Profile** auf die Box
+(mit erzwungener, großer Auflösung – kein 800×600 mehr). Du musst nichts
+einstellen:
 
-1. Web UI öffnen (`http://<CT-IP>:8080`) → Login → **Dateien** →
-   `proton-download-box.remmina` herunterladen
-2. In Remmina: **Menü ☰ → Werkzeuge → Importieren** → die Datei wählen
-3. Auf den neuen Eintrag **doppelklicken** → Passwort eingeben → fertig
+**Windows (häufigster Fall):**
+1. `\\<CT-IP>\downloads\proton-download-box.rdp` öffnen (oder Web UI →
+   **Dateien** → `proton-download-box.rdp` herunterladen)
+2. Doppelklick → „Remotedesktopverbindung" startet im **Vollbild** mit
+   deiner Monitor-Auflösung → Benutzer `proton` + RDP-Passwort → fertig
 
-Alternativ den Eintrag einfach per Doppelklick öffnen (Remmina übernimmt
-`.remmina`-Dateien) oder manuell: Verbindung **bearbeiten** →
-„Auflösung" → **„Client-Auflösung verwenden"** → verbinden → **F11**.
+**Linux (Remmina):**
+1. Web UI → **Dateien** → `proton-download-box.remmina` herunterladen
+2. Remmina: **Menü ☰ → Werkzeuge → Importieren** → Datei wählen →
+   Doppelklick → Passwort → fertig
 
-> Schriften sind auf der Box bewusst auf **11 pt / DPI 96** gesetzt, damit
-> die Oberfläche auch in einem kleinen Fenster lesbar bleibt. Für mehr
-> Platz: Remmina-Fenster maximieren **bevor** du verbindest, oder
-> `1920×1080` fest einstellen.
+**macOS („Windows App"):** PC hinzufügen → `<CT-IP>` → vor dem Verbinden
+unter „Anzeige" die Auflösung auf **„Monitor"** (Vollbild) stellen.
+
+**Manuell (xfreerdp, Linux-Terminal):**
+```bash
+xfreerdp /v:<CT-IP> /u:proton /size:1920x1080 /f /clipboard
+```
+
+> Die Profile erzwingen Vollbild bzw. Client-Auflösung. Erzwingt dein Client
+> trotzdem eine kleine Größe, maximiere das Fenster **bevor** du verbindest.
+> Schriften sind auf der Box auf **11 pt / DPI 96** gesetzt, damit die
+> Oberfläche auch in einem kleinen Fenster lesbar bleibt.
 
 > **„Verbindung wird wiederhergestellt"?** Ab Installer-Version
 > `2026-11-26.9` ist das xfwm4-Compositing deaktiviert — der häufigste
@@ -142,14 +153,14 @@ Alternativ den Eintrag einfach per Doppelklick öffnen (Remmina übernimmt
 4. **Einstellungen (Zahnrad) → Killswitch → On** — fertig. Die Sitzung
    bleibt gespeichert, auch über Neustarts.
 
-> **„Unlock login keyring" / „Authentication required"?** Ab Version
-> `2026-11-26.11` legt der Installer einen **passwortlosen** Login-Keyring
-> an — der Dialog erscheint nie wieder (verifiziert: der Keyring-Zugriff
-> funktioniert headless ohne jede Passwortabfrage). Hinweis: Die
-> Proton-Sitzung liegt damit unverschlüsselt im Container — akzeptabel
-> für eine isolierte Download-Box; wer mehr Sicherheit will, setzt in der
-> XFCE-Einstellung „Sitzungen und Start ⇒ Dienste" ein Keyring-Passwort
-> und trägt es beim ersten Dialog ein.
+> **„Unlock login keyring" / „Authentication required"?** Der Installer legt
+> den Login-Keyring mit **dem RDP-Passwort** an (ab Version `2026-11-27.10`).
+> `pam_gnome_keyring` entsperrt ihn beim RDP-Login automatisch mit genau
+> diesem Passwort – der Dialog erscheint **nie wieder**. (Vorher war der
+> Keyring passwortlos, während PAM das Login-Passwort übergab: es passte nie,
+> also kam der Dialog bei jedem Login.) Wichtig: das Keyring-Passwort ist an
+> das RDP-Passwort gekoppelt – ändert sich das RDP-Passwort, beim nächsten
+> `--id`-Lauf den Keyring neu anlegen lassen (macht der Installer automatisch).
 
 ### Tastatur im RDP-Desktop
 

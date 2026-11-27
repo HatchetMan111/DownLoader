@@ -16,6 +16,12 @@ set -u
 ENV_DIR="${PDB_KEYRING_ENV_DIR:-/run/pdb-keyring}"
 ENV_FILE="$ENV_DIR/env.sh"
 KEYRING_DIR="$HOME/.local/share/keyrings"
+# Der Installer legt das RDP-Login-Passwort hier ab (nur für den Desktop-User
+# lesbar). Der Keyring ist damit passwortgeschützt; headless muss dasselbe
+# Passwort verwendet werden, sonst bleibt er gesperrt.
+PASS_FILE="${PDB_KEYRING_PASS_FILE:-$HOME/.pdb-keyring-pass}"
+KEYRING_PW=""
+[[ -r "$PASS_FILE" ]] && KEYRING_PW=$(head -n1 "$PASS_FILE" 2>/dev/null)
 
 mkdir -p "$ENV_DIR" 2>/dev/null || true
 unset XDG_RUNTIME_DIR
@@ -33,9 +39,11 @@ start_bus() {
 }
 
 unlock_keyring() {
-  # Leeres Passwort = passwortloser Login-Keyring
-  eval "$(printf '\n' | gnome-keyring-daemon --unlock --replace \
-    --components=secrets 2>/dev/null)" >/dev/null 2>&1 || true
+  # Passwort aus der Installer-Datei (Fallback: leeres Passwort für einen
+  # evtl. noch passwortlosen Alt-Keyring). %s\n füttert gnome-keyring-daemon
+  # per stdin – so wird die Sammlung mit dem RDP-Passwort entsperrt.
+  printf '%s\n' "$KEYRING_PW" | gnome-keyring-daemon --unlock --replace \
+    --components=secrets 2>/dev/null
 }
 
 keyring_works() {

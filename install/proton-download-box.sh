@@ -24,7 +24,7 @@ APP_TITLE="Proton Download Box"
 APP_DESC="Proton VPN Free download box with desktop, file manager and web UI"
 # Muss zur SCRIPT_VERSION in scripts/install-inside.sh passen. Weicht die
 # geladene Payload ab, war der GitHub-Cache veraltet (wird laut gemeldet).
-EXPECTED_SCRIPT_VERSION="2026-11-27.9"
+EXPECTED_SCRIPT_VERSION="2026-11-27.10"
 PVE_ETC="${PVE_ETC:-/etc/pve}"
 
 # --- GitHub source -----------------------------------------------------------
@@ -671,10 +671,15 @@ printf '  Dateien       : /srv/downloads\n'
 printf '  Container-Shell: pct enter %s\n' "$CT_ID"
 printf '\n'
 printf '  Nächster Schritt:\n'
-printf '    1. Per RDP mit %s auf %s verbinden\n' "$RDP_USER" "$CT_IP"
-printf '    2. Proton VPN starten, mit dem kostenlosen Account anmelden\n'
-printf '    3. Server verbinden und in den Einstellungen den Killswitch aktivieren\n'
-printf '    4. Downloads über die Web UI oder Samba abholen\n'
+printf '    1. RDP-Client-Profil laden (große Auflösung, kein "zu klein"):\n'
+printf '       Web UI → Dateien → proton-download-box.rdp (Windows) bzw.\n'
+printf '       .remmina (Linux) herunterladen und doppelklicken.\n'
+printf '       Windows: %s\\\\%s\\downloads\\proton-download-box.rdp\n' "$CT_IP" "$RDP_USER"
+printf '    2. Am Desktop: Benutzer %s, RDP-Passwort von oben.\n' "$RDP_USER"
+printf '       (Kein Keyring-Dialog mehr – Keyring-Passwort = RDP-Passwort.)\n'
+printf '    3. Proton VPN starten, mit dem kostenlosen Account anmelden,\n'
+printf '       Server verbinden, Killswitch aktivieren.\n'
+printf '    4. Downloads über die Web UI oder Samba abholen.\n'
 printf '\n'
 printf '  Update:     Installer erneut mit --id %s ausführen\n' "$CT_ID"
 printf '  Deinstall:  ... | bash -s -- --uninstall --id %s\n' "$CT_ID"

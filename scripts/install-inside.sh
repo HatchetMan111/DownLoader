@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.9"
+SCRIPT_VERSION="2026-11-27.10"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -415,33 +415,48 @@ EOF
 chmod 0755 "/home/$RDP_USER/Desktop/protonvpn.desktop"
 chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/Desktop/protonvpn.desktop"
 
-# Login-Keyring des Desktop-Users PASSWORTLOS anlegen: Proton speichert die
-# Sitzung im Keyring, und ein passwortloser Keyring bedeutet NIE einen
-# "Authentication required"-Dialog – weder beim App-Start noch nach Reboots
-# (xrdp gibt das Login-Passwort nicht zuverlässig an PAM weiter, deshalb ist
-# ein passwortgeschlüsselter Keyring hier die zickende Variante).
-# Sicherheitshinweis: die Proton-Sitzung liegt damit unverschlüsselt im
-# Container – akzeptabel für eine isolierte Download-Box.
-msg "Login-Keyring für $RDP_USER anlegen (passwortlos)"
+# Login-Keyring des Desktop-Users mit dem RDP-Login-Passwort anlegen.
+#
+# DAS ist der Kern-Fix gegen den "Authentication required / Unlock login
+# keyring"-Dialog: pam_gnome_keyring (Sektion 5) entsperrt den Keyring beim
+# RDP-Login mit genau dem Passwort, das der Benutzer eintippt. Stimmen
+# Keyring-Passwort und Login-Passwort überein, passiert das SILENT – nie ein
+# Dialog. Vorher war der Keyring passwortlos (leer), pam_gnome_keyring hat
+# aber das Login-Passwort übergeben → es passte NIE → Dialog bei JEDEM Login.
+#
+# Der Desktop-Keyring ist damit an das RDP-Passwort gekoppelt (wie bei einem
+# normalen Linux-Desktop). Wichtig: ändert man das RDP-Passwort, muss der
+# Keyring neu angelegt werden – der Installer erledigt das beim nächsten
+# --id-Lauf automatisch (rm -rf weiter unten).
+msg "Login-Keyring für $RDP_USER anlegen (Passwort = RDP-Login)"
 KEYRING_DIR="/home/$RDP_USER/.local/share/keyrings"
 rm -rf "$KEYRING_DIR"
 install -d -o "$RDP_USER" -g "$RDP_USER" -m 0700 "$KEYRING_DIR"
 # shellcheck disable=SC2016
-if runuser -u "$RDP_USER" -- env HOME="/home/$RDP_USER" bash -c '
+if runuser -u "$RDP_USER" -- env HOME="/home/$RDP_USER" RDP_PW="$RDP_PASSWORD" bash -c '
       # pct exec als root vererbt ein kaputtes XDG_RUNTIME_DIR (/run/user/0)
       # – ohne dieses unset startet dbus-launch nicht ("transient service
       # directory" Fehler) und die Keyring-Anlage schlägt STILL fehl.
       unset XDG_RUNTIME_DIR
       eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1 || exit 1
-      printf "\n" | gnome-keyring-daemon --unlock --replace \
+      # Passwort per stdin an gnome-keyring-daemon übergeben – so wird der
+      # Login-Keyring mit dem RDP-Passwort verschlüsselt angelegt.
+      printf "%s\n" "$RDP_PW" | gnome-keyring-daemon --unlock --replace \
         --components=secrets >/dev/null 2>&1
       exit 0
 ' && [[ -f "$KEYRING_DIR/login.keyring" ]]; then
   printf 'login\n' >"$KEYRING_DIR/default"
   chown -R "$RDP_USER:$RDP_USER" "$KEYRING_DIR"
-  ok "Passwortloser Login-Keyring angelegt (kein Dialog mehr)"
+  # Passwort für die persistente Keyring-Session (pdb-keyring.service) und
+  # das Web-UI-Backend hinterlegen – nur für den Desktop-User lesbar.
+  umask 077
+  printf '%s\n' "$RDP_PASSWORD" >"/home/$RDP_USER/.pdb-keyring-pass"
+  chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.pdb-keyring-pass"
+  chmod 0600 "/home/$RDP_USER/.pdb-keyring-pass"
+  umask 022
+  ok "Login-Keyring angelegt (Passwort = RDP-Login, kein Dialog mehr)"
 else
-  warn "Keyring-Anlage fehlgeschlagen – bei einem Unlock-Dialog: Enter genügt."
+  warn "Keyring-Anlage fehlgeschlagen – beim Unlock-Dialog das RDP-Passwort eingeben."
 fi
 
 # Tastatur-Layout für den RDP-Desktop setzen (Default: de). Ohne diesen
@@ -555,8 +570,11 @@ if [[ $EUID -eq 0 ]]; then
 fi
 unset XDG_RUNTIME_DIR
 eval "$(dbus-launch --sh-syntax)" >/dev/null 2>&1
-eval "$(printf "\n" | gnome-keyring-daemon --unlock --replace \
-  --components=secrets)" >/dev/null 2>&1
+# Keyring mit dem RDP-Passwort entsperren (Datei legt der Installer an).
+KEYRING_PW=""
+[[ -r "$HOME/.pdb-keyring-pass" ]] && KEYRING_PW=$(head -n1 "$HOME/.pdb-keyring-pass" 2>/dev/null)
+printf '%s\n' "$KEYRING_PW" | gnome-keyring-daemon --unlock --replace \
+  --components=secrets >/dev/null 2>&1 || true
 protonvpn connect >/dev/null 2>&1 \
   || echo "Proton: noch nicht angemeldet – pdb-proton-setup ausführen"
 /usr/local/bin/pdb-lan-fix >/dev/null 2>&1 || true
@@ -686,10 +704,38 @@ install -d -o "$APP_USER" -g "$APP_USER" -m 0755 "$APP_DIR"
 install -d -o "$APP_USER" -g "$APP_USER" -m 2775 /srv/downloads
 install -d -o "$APP_USER" -g "$APP_USER" -m 0750 /var/lib/proton-download-box
 
-# Fertig konfigurierten Remmina-Client auf die Box legen: Vollbild +
-# Client-Auflösung. Der Nutzer muss nichts mehr einstellen, nur importieren.
+# Fertig konfigurierte RDP-Client-Profile auf die Box legen: große Auflösung,
+# maximiert/Vollbild. Der Nutzer muss nichts mehr einstellen, nur importieren.
+# Gegen "Bildschirm zu klein": der Client (v. a. Windows mstsc) verbindet ohne
+# Profil oft mit 800x600 – hier wird eine feste, große Auflösung erzwungen.
 BOX_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [[ -n "$BOX_IP" ]]; then
+  # Windows: "Remotedesktopverbindung" (.rdp) – Doppelklick genügt.
+  # screen mode id:2 = Vollbild (nutzt die Monitor-Auflösung), desktopwidth/
+  # height als Fallback für Fenster-/Clientskalierung, 32 bpp, Zwischenablage.
+  cat >"/srv/downloads/proton-download-box.rdp" <<EOF
+full address:s:${BOX_IP}:3389
+username:s:${RDP_USER}
+domain:s:
+screen mode id:i:2
+desktopwidth:i:1920
+desktopheight:i:1080
+session bpp:i:32
+prompt for credentials:i:1
+promptcredentialonce:i:1
+authentication level:i:2
+enablecredsspsupport:i:1
+redirectclipboard:i:1
+redirectdrives:i:0
+redirectprinters:i:0
+redirectcomports:i:0
+redirectsmartcards:i:0
+multimon:i:1
+EOF
+  chown "$APP_USER:$APP_USER" "/srv/downloads/proton-download-box.rdp"
+  ok "RDP-Profil (Windows) abgelegt: /srv/downloads/proton-download-box.rdp"
+
+  # Linux: Remmina-Profil – Client-Auflösung + maximiertes Fenster.
   cat >"/srv/downloads/proton-download-box.remmina" <<EOF
 [remmina]
 name=Proton Download Box

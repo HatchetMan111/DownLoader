@@ -34,6 +34,11 @@ echo "=== 4. Funktion prüfen (als proton) ==="
 runuser -u proton -- env HOME=/home/proton bash -c '
   unset XDG_RUNTIME_DIR
   if [ -r /run/pdb-keyring/env.sh ]; then . /run/pdb-keyring/env.sh; fi
+  # Keyring mit dem RDP-Passwort entsperren, falls die Session es nicht tat.
+  if [ -r "$HOME/.pdb-keyring-pass" ]; then
+    printf "%s\n" "$(head -n1 "$HOME/.pdb-keyring-pass")" \
+      | gnome-keyring-daemon --unlock --replace --components=secrets >/dev/null 2>&1 || true
+  fi
   printf probe | secret-tool store --label=pdb-probe pdb probe >/dev/null 2>&1 \
     && echo "  STORE  OK" || echo "  STORE  FEHLGESCHLAGEN"
   val=$(secret-tool lookup pdb probe 2>/dev/null)

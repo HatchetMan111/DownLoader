@@ -35,8 +35,11 @@ if [[ -r /run/pdb-keyring/env.sh ]]; then
   . /run/pdb-keyring/env.sh
 else
   eval "$(dbus-launch --sh-syntax 2>/dev/null)" >/dev/null 2>&1 || true
-  printf '\n' | gnome-keyring-daemon --unlock --replace --components=secrets \
-    >/dev/null 2>&1 || true
+  # Keyring mit dem RDP-Passwort entsperren (Datei legt der Installer an).
+  KEYRING_PW=""
+  [[ -r "$HOME/.pdb-keyring-pass" ]] && KEYRING_PW=$(head -n1 "$HOME/.pdb-keyring-pass" 2>/dev/null)
+  printf '%s\n' "$KEYRING_PW" | gnome-keyring-daemon --unlock --replace \
+    --components=secrets >/dev/null 2>&1 || true
 fi
 
 # --- LAN-Route: RDP/Samba/Web-UI bleiben trotz Tunnel erreichbar -------------
