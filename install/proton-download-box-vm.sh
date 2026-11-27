@@ -179,8 +179,30 @@ cat >"$USERDATA" <<EOF
 hostname: ${VM_NAME}
 manage_etc_hosts: true
 ssh_pwauth: true
+packages:
+  - qemu-guest-agent
+write_files:
+  - path: /root/pdb-run.sh
+    permissions: '0700'
+    content: |
+      #!/bin/bash
+      exec > /var/log/pdb-install.log 2>&1
+      set -x
+      mkdir -p /root/pdb
+      curl -fsSL '${REPO_TARBALL}' | tar -xz -C /root/pdb --strip-components=1
+      export PDB_PORT='${PORT}'
+      export PDB_TZ='${TZ_VALUE}'
+      export PDB_PASSWORD='${TARGET_PASSWORD}'
+      export PDB_RDP_USER='proton'
+      export PDB_RDP_PASSWORD='${RDP_PASSWORD}'
+      export PDB_SMB_USER='proton'
+      export PDB_SMB_PASSWORD='${RDP_PASSWORD}'
+      export PDB_KBD_LAYOUT='${KBD_LAYOUT}'
+      export PDB_CT_ID='${VM_ID}'
+      export PDB_VM='1'
+      bash /root/pdb/scripts/install-inside.sh
 runcmd:
-  - [ bash, -lc, "exec > /var/log/pdb-install.log 2>&1; mkdir -p /root/pdb && curl -fsSL ${REPO_TARBALL} | tar -xz -C /root/pdb --strip-components=1 && PDB_PORT='${PORT}' PDB_TZ='${TZ_VALUE}' PDB_PASSWORD='${TARGET_PASSWORD}' PDB_RDP_USER='proton' PDB_RDP_PASSWORD='${RDP_PASSWORD}' PDB_SMB_USER='proton' PDB_SMB_PASSWORD='${RDP_PASSWORD}' PDB_KBD_LAYOUT='${KBD_LAYOUT}' PDB_CT_ID='${VM_ID}' PDB_VM='1' bash /root/pdb/scripts/install-inside.sh" ]
+  - [ bash, /root/pdb-run.sh ]
 EOF
 chmod 0600 "$USERDATA"
 ok "Cloud-Init-Datei: $USERDATA"
@@ -210,18 +232,42 @@ ok "VM konfiguriert (Cloud-Init)"
 msg "VM starten"
 qm start "$VM_ID"
 
-# --- IP ermitteln (über MAC-Adresse) ----------------------------------------
+# --- IP ermitteln ------------------------------------------------------------
 MAC=$(qm config "$VM_ID" | sed -n 's/^net0:.*virtio=\([^,]*\).*/\1/p')
 [[ -n "$MAC" ]] || die "MAC-Adresse nicht ermittelbar"
 
 msg "Warte auf Netzwerk der VM (Cloud-Init installiert jetzt alles)"
 VM_IP=""
-for _ in $(seq 1 180); do
+for _ in $(seq 1 150); do
   sleep 2
-  VM_IP=$(ip neigh 2>/dev/null | awk -v m="$MAC" 'tolower($3)==tolower(m) {print $1; exit}')
+
+  # 1) Bevorzugt: Guest-Agent (zuverlässig, sobald das Paket installiert ist)
+  if command -v jq >/dev/null 2>&1; then
+    VM_IP=$(qm guest cmd "$VM_ID" network-get-interfaces 2>/dev/null \
+      | jq -r '.[]? | select(.name != "lo") | ."ip-addresses"[]? | select(."ip-address-type"=="ipv4") | ."ip-address"' 2>/dev/null \
+      | grep -v '^127\.' | head -n1)
+  fi
+
+  # 2) Fallback: ARP-Tabelle über die MAC-Adresse
+  if [[ -z "$VM_IP" ]]; then
+    VM_IP=$(ip neigh 2>/dev/null | awk -v m="$MAC" '
+      { for (i = 1; i <= NF; i++) if ($i == "lladdr" && tolower($(i+1)) == tolower(m)) { print $1; exit } }')
+  fi
+
   [[ -n "$VM_IP" && "$VM_IP" != "0.0.0.0" ]] && break
+  VM_IP=""
 done
-[[ -n "$VM_IP" ]] || die "VM hat keine IP erhalten – Netzwerk/Bridge prüfen (qm terminal $VM_ID)"
+
+if [[ -z "$VM_IP" ]]; then
+  warn "Keine IP ermittelbar. Diagnose:"
+  printf '  qm status %s: %s\n' "$VM_ID" "$(qm status "$VM_ID" 2>&1)"
+  printf '  MAC laut Proxmox: %s\n' "$MAC"
+  printf '  ARP-Tabelle:\n'; ip neigh 2>/dev/null | sed 's/^/    /' | head -n 10
+  printf '\n  Konsole öffnen:  qm terminal %s\n' "$VM_ID"
+  printf '  Nach dem Login:  cat /var/log/pdb-install.log\n\n'
+  die "VM ohne IP – bitte obige Diagnose prüfen"
+fi
+ok "VM-IP: $VM_IP"
 
 msg "Warte auf Web-UI (Installation im Gast läuft, 5–15 Minuten)"
 READY=0
