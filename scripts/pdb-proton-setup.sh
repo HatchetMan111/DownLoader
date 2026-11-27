@@ -61,30 +61,26 @@ if ! command -v protonvpn >/dev/null 2>&1; then
 fi
 
 printf '\n=== Proton VPN einrichten (kostenloser Account)\n'
+printf 'Account anlegen (falls nötig): https://account.proton.me/vpn\n\n'
 
-SIGNED_IN=false
-if protonvpn info >/dev/null 2>&1; then
-  SIGNED_IN=true
-  printf 'Bereits angemeldet – Anmeldung wird übersprungen.\n'
+read -rp 'Proton-Email: ' PUSER || PUSER=""
+if [[ -z "${PUSER:-}" ]]; then
+  printf 'Keine Email eingegeben – Abbruch.\n'
+  exit 1
 fi
 
-if [[ "$SIGNED_IN" != true ]]; then
-  printf 'Account anlegen (falls nötig): https://account.proton.me/vpn\n\n'
+TOTP=""
+read -rp 'Authenticator-App / 2FA-Code statt Security-Key? [j/N] ' ans || ans=""
+case "${ans,,}" in
+  j*) TOTP="--totp" ;;
+esac
 
-  read -rp 'Proton-Email: ' PUSER || PUSER=""
-  if [[ -z "${PUSER:-}" ]]; then
-    printf 'Keine Email eingegeben – Abbruch.\n'
-    exit 1
-  fi
-
-  TOTP=""
-  read -rp 'Authenticator-App / 2FA-Code statt Security-Key? [j/N] ' ans || ans=""
-  case "${ans,,}" in
-    j*) TOTP="--totp" ;;
-  esac
-
-  printf '\nPasswort (Eingabe bleibt unsichtbar):\n'
-  # shellcheck disable=SC2086  # $TOTP soll bei leerer Variable verschwinden
+printf '\nPasswort (Eingabe bleibt unsichtbar):\n'
+# shellcheck disable=SC2086  # $TOTP soll bei leerer Variable verschwinden
+if ! protonvpn signin "$PUSER" $TOTP; then
+  printf '\nAnmeldung nicht möglich – falls bereits angemeldet, Session erneuern …\n'
+  protonvpn signout >/dev/null 2>&1 || true
+  # shellcheck disable=SC2086
   if ! protonvpn signin "$PUSER" $TOTP; then
     printf '\nAnmeldung fehlgeschlagen. Prüfe Email/Passwort und versuche es erneut.\n'
     exit 1
@@ -155,6 +151,18 @@ if [[ "$CONNECTED" != true ]]; then
   ip -brief addr 2>&1 | sed 's/^/  /'
   printf '\nVerbose-Ausgabe:\n'
   protonvpn --verbose connect 2>&1 | tail -n 25 | sed 's/^/  /'
+
+  printf '\nNetworkManager-Journal (letzte 30 Zeilen):\n'
+  sudo -n journalctl -u NetworkManager -n 30 --no-pager 2>/dev/null \
+    | tail -n 30 | sed 's/^/  /'
+
+  printf '\nPolkit-Regeln:\n'
+  if grep -qs 'org.freedesktop.NetworkManager' /etc/polkit-1/rules.d/*.rules; then
+    printf '  NetworkManager-Regel vorhanden\n'
+  else
+    printf '  KEINE NetworkManager-Regel gefunden – NM-Aktionen werden blockiert\n'
+  fi
+  printf '  polkitd: %s\n' "$(systemctl is-active polkit 2>&1 | head -n1)"
 
   printf '\nProton-Logs:\n'
   shopt -s nullglob

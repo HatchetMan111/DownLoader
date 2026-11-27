@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-26.19"
+SCRIPT_VERSION="2026-11-27.1"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -589,24 +589,7 @@ install -d -m 0755 /etc/NetworkManager/dispatcher.d
 # LAN-Route, die Vorrang vor dem Tunnel behält. Ohne das schickt Proton alle
 # Pakete in den Tunnel – auch den Rückweg der RDP-Verbindung aus dem LAN –
 # und die Sitzung bricht ab ("Verbindung wird wiederhergestellt").
-cat >/usr/local/bin/pdb-lan-fix <<'EOF'
-#!/usr/bin/env bash
-# Sorgt dafür, dass LAN-Verkehr (RDP/Samba/Web-UI) immer über eth0 läuft,
-# auch wenn der VPN-Tunnel aktiv ist. Idempotent, gefahrlos mehrfach ausführbar.
-set -u
-ip4=$(ip -4 -o addr show dev eth0 2>/dev/null | awk '{print $4; exit}')
-[ -n "$ip4" ] || exit 0
-lan=$(python3 -c 'import ipaddress,sys; print(ipaddress.ip_interface(sys.argv[1]).network)' "$ip4" 2>/dev/null) || exit 0
-gw=$(ip route show default dev eth0 2>/dev/null | awk '{print $3; exit}')
-[ -n "$gw" ] || gw=$(ip -4 -o addr show dev eth0 | awk '{print $4}' | cut -d/ -f1 | awk -F. '{print $1"."$2"."$3".1"}')
-# 1) konkrete LAN-Route in der Haupttabelle
-ip route replace "$lan" via "$gw" dev eth0 2>/dev/null || true
-# 2) Regel: LAN-Ziele immer über die Haupttabelle (umgeht Tunnel-Policy-Routing)
-ip rule del to "$lan" lookup main priority 100 2>/dev/null || true
-ip rule add to "$lan" lookup main priority 100 2>/dev/null || true
-echo "LAN $lan -> $gw über eth0 freigeschaltet"
-EOF
-chmod 0755 /usr/local/bin/pdb-lan-fix
+install -m 0755 "$PAYLOAD_DIR/scripts/pdb-lan-fix.sh" /usr/local/bin/pdb-lan-fix
 
 cat >/etc/NetworkManager/dispatcher.d/50-proton-download-box <<'EOF'
 #!/usr/bin/env bash
@@ -644,9 +627,10 @@ ok "NetworkManager läuft, eth0 bleibt unmanaged"
 
 # Let the desktop user drive NetworkManager without a polkit prompt.
 cat >/etc/polkit-1/rules.d/50-proton-download-box.rules <<EOF
+// Container-isoliert: NetworkManager darf ohne Rückfrage bedient werden
+// (Proton VPN legt die Tunnel-Verbindung über NM an).
 polkit.addRule(function(action, subject) {
-    if (subject.user == "$RDP_USER" &&
-        action.id.indexOf("org.freedesktop.NetworkManager.") === 0) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0) {
         return polkit.Result.YES;
     }
 });
