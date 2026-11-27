@@ -1,54 +1,77 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  pdb-keyring-session – persistente D-Bus-Session + SecretService
+#  pdb-keyring-session – persistente D-Bus-Session + entsperrter SecretService
 #
-#  Proton VPN speichert Sitzung UND VPN-Zugangsdaten im SecretService
-#  (gnome-keyring). Ohne dauerhaft laufenden Keyring bricht der
-#  Verbindungsaufbau still ab ("Keyring ... error" / 5s-Timeout).
+#  Proton VPN speichert Sitzung UND VPN-Zugangsdaten im SecretService.
+#  Ein gesperrter Keyring führt zum stillen Abbruch des Verbindungsaufbaus
+#  ("KeyringLocked: Failed to unlock the collection!").
 #
-#  Dieses Skript startet eine Session-Bus-Instanz und den Keyring-Daemon
-#  und schreibt die nötigen Umgebungsvariablen nach
-#  /run/pdb-keyring/env.sh, damit alle Proton-Aufrufe dieselbe Session
-#  benutzen.
+#  Dieses Skript startet eine Session-Bus-Instanz, entsperrt den
+#  (passwortlosen) Login-Keyring, prüft die Funktion mit einem Testeintrag
+#  und legt bei Bedarf eine frische Sammlung an. Die Umgebung wird nach
+#  /run/pdb-keyring/env.sh geschrieben.
 # =============================================================================
 set -u
 
 ENV_DIR="${PDB_KEYRING_ENV_DIR:-/run/pdb-keyring}"
 ENV_FILE="$ENV_DIR/env.sh"
+KEYRING_DIR="$HOME/.local/share/keyrings"
 
 mkdir -p "$ENV_DIR" 2>/dev/null || true
-
-# Kein XDG_RUNTIME_DIR im Container – sonst startet dbus nicht.
 unset XDG_RUNTIME_DIR
 
-# Session-Bus (dauerhaft, --fork)
-bus_out=$(dbus-daemon --session --fork --print-address=1 --print-pid=1 2>/dev/null)
-bus_addr=$(printf '%s\n' "$bus_out" | sed -n '1p')
-bus_pid=$(printf '%s\n' "$bus_out" | sed -n '2p')
+# Alte Daemons dieser Sitzung beenden
+pkill -f "gnome-keyring-daemon" >/dev/null 2>&1 || true
 
-if [[ -z "$bus_addr" ]]; then
+start_bus() {
+  local out
+  out=$(dbus-daemon --session --fork --print-address=1 --print-pid=1 2>/dev/null)
+  DBUS_SESSION_BUS_ADDRESS=$(printf '%s\n' "$out" | sed -n '1p')
+  DBUS_SESSION_BUS_PID=$(printf '%s\n' "$out" | sed -n '2p')
+  export DBUS_SESSION_BUS_ADDRESS DBUS_SESSION_BUS_PID
+  [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]]
+}
+
+unlock_keyring() {
+  # Leeres Passwort = passwortloser Login-Keyring
+  eval "$(printf '\n' | gnome-keyring-daemon --unlock --replace \
+    --components=secrets 2>/dev/null)" >/dev/null 2>&1 || true
+}
+
+keyring_works() {
+  command -v secret-tool >/dev/null 2>&1 || return 1
+  printf 'probe' | secret-tool store --label=pdb-probe pdb probe \
+    >/dev/null 2>&1 || return 1
+  [[ "$(secret-tool lookup pdb probe 2>/dev/null)" == "probe" ]]
+}
+
+if ! start_bus; then
   echo "Session-Bus konnte nicht gestartet werden." >&2
   exit 1
 fi
 
-export DBUS_SESSION_BUS_ADDRESS="$bus_addr"
-export DBUS_SESSION_BUS_PID="$bus_pid"
+unlock_keyring
 
-# Keyring-Daemon starten (Login-Keyring ist passwortlos vorbereitet).
-keyring_env=$(echo "" | gnome-keyring-daemon --start --replace --components=secrets 2>/dev/null)
-if [[ -n "$keyring_env" ]]; then
-  eval "$keyring_env" 2>/dev/null || true
+if ! keyring_works; then
+  echo "Keyring gesperrt – lege frische, passwortlose Sammlung an." >&2
+  pkill -f "gnome-keyring-daemon" >/dev/null 2>&1 || true
+  rm -rf "$KEYRING_DIR"
+  mkdir -p "$KEYRING_DIR"
+  chmod 0700 "$KEYRING_DIR"
+  unlock_keyring
 fi
 
-# Umgebung für alle anderen Prozesse bereitstellen
+if keyring_works; then
+  echo "Keyring entsperrt und einsatzbereit."
+else
+  echo "WARNUNG: Keyring weiterhin gesperrt – Proton-Verbindung ggf. blockiert." >&2
+fi
+
 {
-  printf "export DBUS_SESSION_BUS_ADDRESS='%s'\n" "$bus_addr"
+  printf "export DBUS_SESSION_BUS_ADDRESS='%s'\n" "${DBUS_SESSION_BUS_ADDRESS:-}"
   printf "export GNOME_KEYRING_CONTROL='%s'\n" "${GNOME_KEYRING_CONTROL:-}"
   printf "export SSH_AUTH_SOCK='%s'\n" "${SSH_AUTH_SOCK:-}"
 } >"$ENV_FILE"
 chmod 0644 "$ENV_FILE" 2>/dev/null || true
 
-echo "Keyring-Session bereit: $bus_addr"
-
-# Prozess am Leben halten, solange der Dienst läuft
 exec sleep infinity

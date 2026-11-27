@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.5"
+SCRIPT_VERSION="2026-11-27.6"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
