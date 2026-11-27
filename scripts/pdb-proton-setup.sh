@@ -76,38 +76,59 @@ fi
 printf '\n=== Proton VPN einrichten (kostenloser Account)\n'
 printf 'Account anlegen (falls nötig): https://account.proton.me/vpn\n\n'
 
-read -rp 'Proton-Email: ' PUSER || PUSER=""
-if [[ -z "${PUSER:-}" ]]; then
-  printf 'Keine Email eingegeben – Abbruch.\n'
-  exit 1
+# Nicht-interaktiver Modus: wenn PDB_PROTON_EMAIL + PDB_PROTON_PASSWORD gesetzt
+# sind (vom Installer mit --proton-email/--proton-password übergeben), läuft der
+# Login ohne Rückfragen durch. protonvpn signin liest das Passwort per getpass;
+# ohne TTY fällt es auf stdin zurück – deshalb per Pipe einspeisen.
+NONINTERACTIVE=0
+PUSER="${PDB_PROTON_EMAIL:-}"
+PROTON_PW="${PDB_PROTON_PASSWORD:-}"
+if [[ -n "$PUSER" && -n "$PROTON_PW" ]]; then
+  NONINTERACTIVE=1
+  printf 'Credentials aus Installer-Parametern übernommen (%s).\n' "$PUSER"
+else
+  read -rp 'Proton-Email: ' PUSER || PUSER=""
+  if [[ -z "${PUSER:-}" ]]; then
+    printf 'Keine Email eingegeben – Abbruch.\n'
+    exit 1
+  fi
 fi
 
 TOTP=""
-read -rp 'Authenticator-App / 2FA-Code statt Security-Key? [j/N] ' ans || ans=""
-case "${ans,,}" in
-  j*) TOTP="--totp" ;;
-esac
+if [[ $NONINTERACTIVE -eq 0 ]]; then
+  read -rp 'Authenticator-App / 2FA-Code statt Security-Key? [j/N] ' ans || ans=""
+  case "${ans,,}" in
+    j*) TOTP="--totp" ;;
+  esac
+elif [[ -n "${PDB_PROTON_TOTP:-}" ]]; then
+  TOTP="--totp"
+fi
 
-printf '\nPasswort (Eingabe bleibt unsichtbar):\n'
-# protonvpn signin liest das Passwort per getpass direkt vom Terminal – unter
-# pct exec bleibt dabei das Echo AN (Passwort sichtbar). Echo rund um den
-# Aufruf hart abschalten; protonvpn bekommt es so unsichtbar. Danach sicher
-# wiederherstellen (auch bei Abbruch/Fehler).
-stty -echo 2>/dev/null || true
-# shellcheck disable=SC2086  # $TOTP soll bei leerer Variable verschwinden
-protonvpn signin "$PUSER" $TOTP
-signin_rc=$?
-stty echo 2>/dev/null || true
-if [[ $signin_rc -ne 0 ]]; then
+signin() {
+  # $1 = Email, $2 = Passwort, $3 = --totp (optional, leer = weglassen)
+  local email="$1" pw="$2" totp="${3:-}"
+  if [[ $NONINTERACTIVE -eq 1 ]]; then
+    # Passwort per stdin (getpass-Fallback ohne TTY); --totp nur wenn gesetzt.
+    # shellcheck disable=SC2086
+    printf '%s\n' "$pw" | protonvpn signin "$email" $totp
+  else
+    printf '\nPasswort (Eingabe bleibt unsichtbar):\n'
+    stty -echo 2>/dev/null || true
+    # shellcheck disable=SC2086
+    protonvpn signin "$email" $totp
+    local rc=$?
+    stty echo 2>/dev/null || true
+    return $rc
+  fi
+}
+
+if ! signin "$PUSER" "$PROTON_PW" "$TOTP"; then
   printf '\nAnmeldung nicht möglich – falls bereits angemeldet, Session erneuern …\n'
   protonvpn signout >/dev/null 2>&1 || true
-  printf 'Passwort erneut (unsichtbar):\n'
-  stty -echo 2>/dev/null || true
-  # shellcheck disable=SC2086
-  protonvpn signin "$PUSER" $TOTP
-  signin_rc=$?
-  stty echo 2>/dev/null || true
-  if [[ $signin_rc -ne 0 ]]; then
+  if [[ $NONINTERACTIVE -eq 0 ]]; then
+    printf 'Passwort erneut (unsichtbar):\n'
+  fi
+  if ! signin "$PUSER" "$PROTON_PW" "$TOTP"; then
     printf '\nAnmeldung fehlgeschlagen. Prüfe Email/Passwort und versuche es erneut.\n'
     exit 1
   fi

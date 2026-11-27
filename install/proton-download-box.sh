@@ -24,7 +24,7 @@ APP_TITLE="Proton Download Box"
 APP_DESC="Proton VPN Free download box with desktop, file manager and web UI"
 # Muss zur SCRIPT_VERSION in scripts/install-inside.sh passen. Weicht die
 # geladene Payload ab, war der GitHub-Cache veraltet (wird laut gemeldet).
-EXPECTED_SCRIPT_VERSION="2026-11-27.12"
+EXPECTED_SCRIPT_VERSION="2026-11-27.13"
 PVE_ETC="${PVE_ETC:-/etc/pve}"
 
 # --- GitHub source -----------------------------------------------------------
@@ -51,6 +51,11 @@ PORT="${PORT:-8080}"
 TZ_VALUE="${TZ_VALUE:-Europe/Berlin}"
 KBD_LAYOUT="${KBD_LAYOUT:-de}"
 RDP_USER="${RDP_USER:-proton}"
+
+# --- Proton-VPN-Credentials (optional, für automatischen Login beim Install) --
+PROTON_EMAIL="${PROTON_EMAIL:-}"
+PROTON_PASSWORD="${PROTON_PASSWORD:-}"
+PROTON_TOTP="${PROTON_TOTP:-0}"
 
 # --- secrets (generated when empty, preserved on re-runs) --------------------
 WEB_PASSWORD="${WEB_PASSWORD:-}"
@@ -103,6 +108,9 @@ Optionen:
   --tz <zone>            Zeitzone (Standard: ${TZ_VALUE})
   --kbd <layout>         Tastatur-Layout im RDP-Desktop (Standard: ${KBD_LAYOUT})
   --rdp-user <name>      Desktop-Benutzer (Standard: ${RDP_USER})
+  --proton-email <mail>  Proton-Account für automatischen VPN-Login beim Install
+  --proton-password <pw> Proton-Passwort (nur mit --proton-email)
+  --proton-totp          Proton-Login mit Authenticator-App (2FA statt Security-Key)
   --web-password <pw>    Passwort der Web UI (Standard: generiert)
   --rdp-password <pw>    Passwort für RDP/Samba (Standard: generiert)
   --root-password <pw>   Root-Passwort des Containers (Standard: gesperrt)
@@ -179,6 +187,9 @@ while [[ $# -gt 0 ]]; do
     --tz) TZ_VALUE="${2:?}"; shift 2 ;;
     --kbd) KBD_LAYOUT="${2:?}"; shift 2 ;;
     --rdp-user) RDP_USER="${2:?}"; shift 2 ;;
+    --proton-email) PROTON_EMAIL="${2:?}"; shift 2 ;;
+    --proton-password) PROTON_PASSWORD="${2:?}"; shift 2 ;;
+    --proton-totp) PROTON_TOTP=1; shift ;;
     --web-password) WEB_PASSWORD="${2:?}"; shift 2 ;;
     --rdp-password) RDP_PASSWORD="${2:?}"; shift 2 ;;
     --root-password) ROOT_PASSWORD="${2:?}"; shift 2 ;;
@@ -582,6 +593,9 @@ PDB_RDP_USER='${RDP_USER}'
 PDB_RDP_PASSWORD='${RDP_PASSWORD}'
 PDB_SMB_USER='${RDP_USER}'
 PDB_SMB_PASSWORD='${RDP_PASSWORD}'
+PDB_PROTON_EMAIL='${PROTON_EMAIL}'
+PDB_PROTON_PASSWORD='${PROTON_PASSWORD}'
+PDB_PROTON_TOTP='${PROTON_TOTP}'
 EOF
   umask 022   # zurücksetzen: pct exec / lxc-attach erbt die umask im Container!
   pct push "$CT_ID" "$INSTALL_ENV" /root/pdb-install.env

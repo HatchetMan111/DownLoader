@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.12"
+SCRIPT_VERSION="2026-11-27.13"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -936,6 +936,28 @@ else
     ok "Web UI nach Firewall-Reset erreichbar"
   else
     die "Web UI auch ohne Firewall nicht über ${CT_IP}:${PORT} erreichbar"
+  fi
+fi
+
+# --------------------------------------------------------------------------- #
+# 10b. optional: Proton-Login automatisch durchführen
+# --------------------------------------------------------------------------- #
+
+if [[ -n "${PDB_PROTON_EMAIL:-}" && -n "${PDB_PROTON_PASSWORD:-}" ]]; then
+  msg "Proton-Login mit übergebenen Credentials (nicht-interaktiv)"
+  # Der Setup-Assistent läuft als Desktop-Benutzer; PDB_PROTON_* aus der
+  # Install-Env werden durchgereicht und schalten ihn in den nicht-interaktiven
+  # Modus (Passwort per stdin, keine Rückfragen).
+  if runuser -u "$RDP_USER" -- env \
+       HOME="/home/$RDP_USER" \
+       PDB_PROTON_EMAIL="$PDB_PROTON_EMAIL" \
+       PDB_PROTON_PASSWORD="$PDB_PROTON_PASSWORD" \
+       PDB_PROTON_TOTP="${PDB_PROTON_TOTP:-0}" \
+       bash /usr/local/bin/pdb-proton-setup; then
+    ok "Proton-Login + Verbindungsaufbau abgeschlossen"
+  else
+    warn "Automatischer Proton-Login fehlgeschlagen – bitte später manuell:"
+    warn "  pct enter ${PDB_CT_ID:-<CT-ID>} → bash /usr/local/bin/pdb-proton-setup"
   fi
 fi
 

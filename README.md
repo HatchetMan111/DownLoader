@@ -63,6 +63,9 @@ Mit `--debug` gibt es zusätzlich ein vollständiges `bash -x`-Log unter
 | `--port` | `8080` | Web-UI-Port |
 | `--tz` | `Europe/Berlin` | Zeitzone |
 | `--rdp-user` | `proton` | Desktop-Benutzer |
+| `--proton-email <mail>` | – | Proton-Account: automatischer VPN-Login direkt beim Install |
+| `--proton-password <pw>` | – | Proton-Passwort (nur mit `--proton-email`) |
+| `--proton-totp` | – | Login mit Authenticator-App (2FA statt Security-Key) |
 | `--web-password` / `--rdp-password` | generiert | Passwörter |
 | `--local-dir <pfad>` | – | Lokalen Checkout statt GitHub installieren |
 | `--check` | – | Nur bestehenden Container prüfen |
@@ -77,7 +80,16 @@ Beispiele:
 
 # kleiner, mit eigenem Passwort
 ... | bash -s -- --ram 2048 --disk 16 --web-password "MeinPasswort"
+
+# mit automatischem Proton-Login direkt beim Install
+... | bash -s -- --proton-email "du@proton.me" --proton-password "deinpw"
+# (mit Authenticator-App/2FA zusätzlich: --proton-totp)
 ```
+
+> **Tipp:** Gibst du `--proton-email` + `--proton-password` an, erledigt der
+> Installer den Proton-Login + Verbindungsaufbau **gleich mit** – du musst
+> danach nichts mehr per RDP/Terminal machen. Ohne diese Flags läuft der Login
+> später einmalig über `pct enter <ID>` → `bash /usr/local/bin/pdb-proton-setup`.
 
 ## Nach der Installation: VPN einrichten (einmalig, ~2 Minuten)
 
