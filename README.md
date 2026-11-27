@@ -165,8 +165,12 @@ xfreerdp /v:<CT-IP> /u:proton /size:1920x1080 /f /clipboard
 ### Tastatur im RDP-Desktop
 
 Der Desktop startet mit **deutschem Layout** (`de`) — `@` ist wie gewohnt
-`AltGr+Q`, `z` und `y` sitzen richtig. Anderes Layout? Installer mit
-`--kbd <layout>` ausführen (z. B. `--kbd us`).
+`AltGr+Q`, `z` und `y` sitzen richtig. Das Layout wird ab Version
+`2026-11-27.11` an **drei** Stellen erzwungen (systemweit, direkt in
+`startwm.sh` nach dem X-Start, und im Autostart mit Nachzügler), weil
+xrdp/xorgxrdp beim Verbinden sonst das Layout des Clients übernimmt und auf
+US zurückfällt. Anderes Layout? Installer mit `--kbd <layout>` ausführen
+(z. B. `--kbd us`).
 
 ```bash
 ... | bash -s -- --id 109 --kbd us

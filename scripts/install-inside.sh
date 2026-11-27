@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-27.10"
+SCRIPT_VERSION="2026-11-27.11"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -462,22 +462,43 @@ fi
 # Tastatur-Layout für den RDP-Desktop setzen (Default: de). Ohne diesen
 # Schritt liefert die Session ein US-Layout – z. B. "@" ist dann nicht
 # über AltGr+Q erreichbar.
+#
+# xrdp/xorgxrdp übernimmt beim Verbinden das Layout, das der Client meldet,
+# und überschreibt damit ein zu früh gesetztes setxkbmap. Deshalb wird das
+# Layout an DREI Stellen erzwungen: (1) /etc/default/keyboard, (2) direkt in
+# startwm.sh NACH dem X-Start (greift in der echten Session), (3) Autostart
+# mit kurzem Nachzügler, falls xrdp es danach nochmal setzt.
 if [[ -n "$KBD_LAYOUT" ]]; then
   msg "Tastatur-Layout setzen: $KBD_LAYOUT"
+  # (1) Systemweit: /etc/default/keyboard anlegen/aktualisieren. Das alte
+  # sed-only-Vorgehen scheiterte, wenn die Datei die Zeile gar nicht enthielt.
   if [[ -f /etc/default/keyboard ]]; then
-    sed -i 's/^XKBLAYOUT=.*/XKBLAYOUT="'"$KBD_LAYOUT"'"/' /etc/default/keyboard
-    dpkg-reconfigure -f noninteractive keyboard-configuration >/dev/null 2>&1 || true
+    if grep -q '^XKBLAYOUT=' /etc/default/keyboard; then
+      sed -i 's/^XKBLAYOUT=.*/XKBLAYOUT="'"$KBD_LAYOUT"'"/' /etc/default/keyboard
+    else
+      printf 'XKBLAYOUT="%s"\n' "$KBD_LAYOUT" >>/etc/default/keyboard
+    fi
+  else
+    printf 'XKBLAYOUT="%s"\n' "$KBD_LAYOUT" >/etc/default/keyboard
   fi
+  # XKB-Varianten/Regeln sauber setzen (verhindert "us"-Rückfall).
+  if [[ -f /etc/default/keyboard ]]; then
+    grep -q '^XKBMODEL=' /etc/default/keyboard || printf 'XKBMODEL="pc105"\n' >>/etc/default/keyboard
+  fi
+  dpkg-reconfigure -f noninteractive keyboard-configuration >/dev/null 2>&1 || true
+
+  # (3) Autostart: sofort + als Nachzügler (xrdp setzt das Layout gern erst
+  # nach dem Session-Start, dann holt der zweite Aufruf es zurück).
   cat >"/home/$RDP_USER/.config/autostart/keyboard-layout.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Tastatur-Layout
 Comment=Layout in der RDP-Session erzwingen
-Exec=setxkbmap $KBD_LAYOUT
+Exec=bash -c "setxkbmap $KBD_LAYOUT; sleep 2; setxkbmap $KBD_LAYOUT"
 Terminal=false
 EOF
   chown "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.config/autostart/keyboard-layout.desktop"
-  ok "Tastatur-Layout aktiv: $KBD_LAYOUT"
+  ok "Tastatur-Layout aktiv: $KBD_LAYOUT (systemweit + startwm.sh + Autostart)"
 fi
 
 chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.config"
@@ -488,7 +509,10 @@ chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.config"
 
 msg "xrdp konfigurieren"
 adduser xrdp ssl-cert >/dev/null 2>&1 || true
-cat >/etc/xrdp/startwm.sh <<'EOF'
+# KBD_LAYOUT aus der Container-Umwelt in die startwm.sh übernehmen. Das Layout
+# wird dort NACH dem X-Start gesetzt – der einzige Punkt, an dem setxkbmap
+# sicher greift und xrdp das US-Layout des Clients überschreibt.
+cat >/etc/xrdp/startwm.sh <<EOF
 #!/bin/sh
 # Start an XFCE session for xrdp users.
 unset DBUS_SESSION_BUS_ADDRESS
@@ -499,6 +523,9 @@ export GSK_RENDERER=cairo
 if [ -r /etc/profile ]; then
   . /etc/profile
 fi
+# Tastatur-Layout in der echten Session erzwingen (xrdp überschreibt es sonst
+# mit dem Client-Layout). Kurz verzögert, damit der X-Server bereit ist.
+(sleep 1; setxkbmap ${KBD_LAYOUT:-de}) >/dev/null 2>&1 || true
 exec startxfce4
 EOF
 chmod 0755 /etc/xrdp/startwm.sh
