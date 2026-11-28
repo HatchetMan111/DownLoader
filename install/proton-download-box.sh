@@ -24,7 +24,7 @@ APP_TITLE="Proton Download Box"
 APP_DESC="Proton VPN Free download box with desktop, file manager and web UI"
 # Muss zur SCRIPT_VERSION in scripts/install-inside.sh passen. Weicht die
 # geladene Payload ab, war der GitHub-Cache veraltet (wird laut gemeldet).
-EXPECTED_SCRIPT_VERSION="2026-11-27.29"
+EXPECTED_SCRIPT_VERSION="2026-11-28.1"
 PVE_ETC="${PVE_ETC:-/etc/pve}"
 
 # --- GitHub source -----------------------------------------------------------
@@ -269,7 +269,7 @@ next_free_id() {
 }
 
 pick_storage() {
-  local content=$1 requested=$2
+  local content="${1:-}" requested="${2:-}"
   if [[ -n "$requested" ]]; then
     if ! pvesm status -content "$content" -storage "$requested" >/dev/null 2>&1; then
       die "Storage '$requested' unterstützt keinen Inhalt vom Typ '$content'."
@@ -277,8 +277,35 @@ pick_storage() {
     printf '%s\n' "$requested"
     return 0
   fi
-  pvesm status -content "$content" 2>/dev/null \
-    | awk 'NR > 1 && $3 == "active" { print $1; exit }'
+
+  # Automatische Wahl: aktive Storages mit Typ holen und einen NICHT-dir-Storage
+  # bevorzugen (Thin-Pool wie local-lvm). Grund: 'dir: local' liegt auf der
+  # Root-Platte des Hosts – ein voller Container-Rootfs füllt dann den HOST und
+  # blockiert beim Voll-Laufen u. U. den Shutdown. Vorher hat der Installer den
+  # ersten aktiven genommen, was gern 'local' war.
+  # Hinweis: Nur für 'rootdir' relevant; für Templates (vztmpl) ist ein dir-
+  # Storage wie 'local' völlig normal und bleibt die erste Wahl.
+  local name stype first="" pick=""
+  while read -r name stype; do
+    [[ -n "$name" ]] || continue
+    [[ -z "$first" ]] && first="$name"
+    if [[ "$stype" != "dir" && -z "$pick" ]]; then
+      pick="$name"
+    fi
+  done < <(pvesm status -content "$content" 2>/dev/null \
+    | awk 'NR > 1 && $3 == "active" { print $1, $2 }')
+
+  if [[ -z "$pick" ]]; then
+    pick="$first"
+    if [[ -n "$pick" && "$content" == "rootdir" ]]; then
+      # Warnung nach stderr (stdout muss reiner Storage-Name bleiben, da diese
+      # Funktion per Command-Substitution ausgewertet wird).
+      printf '%s\n' \
+        "WARNUNG: Nur dir-Storage ('$pick') für Container-Rootfs verfügbar – der Container landet auf der HOST-Root-Platte! Wenn möglich: --storage <thin-pool> (z. B. local-lvm) angeben." >&2
+    fi
+  fi
+  [[ -n "$pick" ]] || return 1
+  printf '%s\n' "$pick"
 }
 
 ensure_template() {

@@ -86,8 +86,17 @@ case "$cmd" in
       [[ "$storage" == "local" ]] && exit 0 || exit 1
     fi
     printf 'Name             Type     Status    Total     Used   Available\n'
-    printf 'local             dir    active       100        1           99\n'
-    printf 'local-lvm      lvmthin    active       100        1           99\n'
+    # Realitätsgetreu: lvmthin (local-lvm) unterstützt nur rootdir/images;
+    # vztmpl/iso/backup/snippet gibt es nur auf dem dir-Storage 'local'.
+    case "$content" in
+      rootdir|images)
+        printf 'local             dir    active       100        1           99\n'
+        printf 'local-lvm      lvmthin    active       100        1           99\n'
+        ;;
+      *)
+        printf 'local             dir    active       100        1           99\n'
+        ;;
+    esac
     ;;
   *) exit 0 ;;
 esac
@@ -185,10 +194,10 @@ else
   fail "nächste freie CT-ID"
 fi
 
-if grep -q 'rootfs=local' <<<"$out"; then
-  pass "dry-run: Storage automatisch gewählt"
+if grep -q 'rootfs=local-lvm' <<<"$out"; then
+  pass "dry-run: Storage automatisch gewählt (Thin-Pool statt Host-Root-Platte)"
 else
-  fail "dry-run: Storage"
+  fail "dry-run: Storage (erwartet rootfs=local-lvm, bekommen: $(grep -o 'rootfs=[^ ]*' <<<"$out" | head -1))"
 fi
 
 printf '%s==>%s Nächste freie ID mit belegten IDs\n' "$B" "$N"
@@ -277,6 +286,36 @@ if [[ $rc -eq 0 && "$result" == "local" ]]; then
   pass "pick_storage liefert gewählten Storage"
 else
   fail "pick_storage: '$result' (rc=$rc)"
+fi
+
+# --- 9. pick_storage automatisch: bevorzugt Thin-Pool statt dir-Storage -------
+# (Regression: vorher wurde der erste aktive Storage genommen – das war gern
+# 'local' auf der HOST-Root-Platte, die ein voller Container dann gefüllt hat.)
+result=$(
+  export PATH="$STUB:$PATH"
+  die() { printf 'DIE: %s\n' "$*" >&2; exit 1; }
+  # shellcheck disable=SC1090
+  source <(sed -n '/^pick_storage()/,/^}/p' "$ROOT/install/proton-download-box.sh")
+  pick_storage rootdir
+) && rc=0 || rc=$?
+if [[ $rc -eq 0 && "$result" == "local-lvm" ]]; then
+  pass "pick_storage auto bevorzugt Thin-Pool (local-lvm statt local)"
+else
+  fail "pick_storage auto: '$result' (rc=$rc) – erwartet local-lvm"
+fi
+
+# --- 10. Templates (vztmpl): dir-Storage 'local' bleibt zulässige Auto-Wahl ----
+result=$(
+  export PATH="$STUB:$PATH"
+  die() { printf 'DIE: %s\n' "$*" >&2; exit 1; }
+  # shellcheck disable=SC1090
+  source <(sed -n '/^pick_storage()/,/^}/p' "$ROOT/install/proton-download-box.sh")
+  pick_storage vztmpl
+) && rc=0 || rc=$?
+if [[ $rc -eq 0 && "$result" == "local" ]]; then
+  pass "pick_storage vztmpl fällt auf dir-Storage zurück (ohne Warnungs-Zwang)"
+else
+  fail "pick_storage vztmpl: '$result' (rc=$rc)"
 fi
 
 printf '\n'
