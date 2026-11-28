@@ -14,7 +14,7 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SCRIPT_VERSION="2026-11-28.1"
+SCRIPT_VERSION="2026-11-28.2"
 
 PAYLOAD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # umask normalisieren: pct exec / lxc-attach erbt die umask des Host-Prozesses,
@@ -291,6 +291,11 @@ apt_install firefox-esr || warn "firefox-esr nicht verfügbar – Desktop ohne B
 # FileZilla (FTP/SFTP-Client) im Desktop für direkte Transfers (z. B. zu einer
 # Konsole oder einem anderen Server über FTP/SFTP).
 apt_install filezilla || warn "filezilla nicht verfügbar – Desktop ohne FTP-Client"
+
+# Entpacken ab Werk: 7-Zip (7z für RAR/7z/ISO-Archive) + xarchiver, damit
+# "Hier entpacken" per Rechtsklick im Thunar-Dateimanager funktioniert.
+apt_install p7zip-full xarchiver zip \
+  || warn "7zip/xarchiver nicht verfügbar – Archiv-Entpacken ggf. eingeschränkt"
 
 # xfce-polkit is optional (a polkit rule below covers NetworkManager anyway)
 apt_install xfce-polkit || warn "xfce-polkit nicht verfügbar – weiter ohne"
